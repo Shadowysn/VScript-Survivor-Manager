@@ -1,0 +1,1 @@
+IncludeScript( "vscript_survivor_manager", getroottable() );

@@ -1,0 +1,30 @@
+"AddonInfo"
+{
+addontitle "VScript Survivor Manager"
+addonversion "1"
+addontagline "Manage more than 4 survivors"
+addonauthor "Shadowysn"
+addonSteamGroupName ""
+addonauthorSteamID ""
+addonContent_Campaign 0
+addonURL0 ""
+
+addonDescription "EXPERIMENTAL WIP
+Manage more than 4 survivors"
+
+addonContent_Script 1
+addonContent_Music 0
+addonContent_Sound 0
+addonContent_prop 0 //This Add-on provides new props, 
+addonContent_Prefab 0 //Provides new prefabs
+
+addonContent_BackgroundMovie 0 //Provides a replacement for the background movie.
+addonContent_Survivor "1" //Provides a new survivor model. 0=false, 1=true, String in quotes if replaces specific single character, i.e. "Francis"
+addonContent_BossInfected 0 //Provides a new boss infected model. Break these out?
+addonContent_CommonInfected 0 //Provides a new common infected model
+addonContent_WeaponModel 0 //Provides a new appearance to existing weapons, but does not change their function
+addonContent_weapon 0 //provides new weapons or new zombie killing functionality, i.e. guns, explosives, booby traps, hot tar, 
+addonContent_Skin 0 //0 if no new skin textures for existing models. 1 if multiple skin pack. String in quotes if specific single skin
+addonContent_Spray 0 //Provides new sprays. 
+addonContent_Map 0 //Add-on provides a standalone map
+}
