@@ -692,4 +692,43 @@ case "glubtastic4_7":
 		//EntityOutputs.AddOutput(giverTrigger, "OnUser1", "louis", "FireUser2", "", 0.2, 1);
 	//}
 	break;
+case "cf_m3_evac":
+case "cf_m4_outskirts":
+case "cf_m5_highway":
+	local mike = Entities.FindByName(null, "npc_mike");
+	if (mike != null)
+	{
+		if (VSSMEssentialBots.find(mike) == null)
+			VSSMEssentialBots.append(mike);
+	}
+	
+	local worldSpawn = GetWorldSpawn();
+	worldSpawn[1].VSSMCFNPC <- function()
+	{
+		if ("cf_npc_script" in getroottable())
+		{
+			if ("NPCPostSpawn" in ::cf_npc_script)
+			{
+				::cf_npc_script.VSSMNPCPostSpawn <- ::cf_npc_script.NPCPostSpawn;
+				::cf_npc_script.NPCPostSpawn <- function(userid)
+				{
+					local player = GetPlayerFromUserID( userid );
+					if ( player == null || !player.IsSurvivor() )
+						return;
+					
+					if (VSSMEssentialBots.find(player) == null)
+						VSSMEssentialBots.append(player);
+					::cf_npc_script.VSSMNPCPostSpawn(userid);
+				}
+			}
+			else
+				printl("[VSSM] Couldn't find NPCPostSpawn function in cf_npc_script!")
+		}
+		else
+			printl("[VSSM] Couldn't find cf_npc_script!")
+	}
+	worldSpawn[1].VSSMCFNPC();
+	// CF Map 3 calls RunScriptFile cf_npc_script on @director, delay it a bit
+	if (g_MapName == "cf_m3_evac")
+		DoEntFire("!self", "CallScriptFunction", "VSSMCFNPC", 0.5, null, worldSpawn[0]);
 }

@@ -7,10 +7,6 @@ i see u boi
 
 */
 
-/*
-* Implemented talker remark (TLK_REMARK) fix for "Extra Set" survivors, eg. L4D1 survivors in L4D2 set and L4D2 survivors in L4D1 set.
-*/
-
 // todo:
 /*
 - block and/or forward inputs from our team 2 survivors to team 4
@@ -254,6 +250,11 @@ if (!("VSSMFirstCharSurvs" in this))
 if (!("VSSMCharsInit" in this))
 { VSSMCharsInit <- null; }
 
+// Team 2 Bots that shouldn't be removed, like Mike from Cold Front
+// map_support script handles adding bots to this array
+if (!("VSSMEssentialBots" in this))
+{ VSSMEssentialBots <- []; }
+
 if (!("survManager" in this) || survManager.hasRoundEnded != null)
 {
 
@@ -401,13 +402,13 @@ survManager <-
 	
 	function GetSurvSet()
 	{
-		switch (survManager.Settings.forceFuncSurvSet)
+		/*switch (survManager.Settings.forceFuncSurvSet)
 		{
 		case 1:
 		case 2:
 			return survManager.Settings.forceFuncSurvSet;
 			break;
-		}
+		}*/
 		return survSet;
 	}
 	
@@ -462,7 +463,7 @@ survManager <-
 	{
 		survCount = 4,
 		removeExcessSurvivors = true,
-		forceFuncSurvSet = 0,
+		//forceFuncSurvSet = 0,
 		survStartWeapons = [
 			"base",
 			"pistol",
@@ -920,6 +921,10 @@ survManager <-
 		if (oldPly == null || !oldPly.IsValid()) return;
 		local newPly = GetPlayerFromUserID(newPlyId);
 		if (newPly == null || !newPly.IsValid() || !newPly.IsSurvivor()) return;
+		
+		local essentialMark = VSSMEssentialBots.find(oldPly);
+		if (essentialMark != null)
+			VSSMEssentialBots[essentialMark] = newPly;
 		
 		local survChar = NetProps.GetPropInt(oldPly, "m_survivorCharacter");
 		// don't count these as spawned so they don't change unwantedly by CharCheck
@@ -2161,7 +2166,7 @@ survManager <-
 	{
 		if (!Settings.fixFriendlyFireLines) return;
 		local client = GetPlayerFromUserID( params["userid"] );
-		if ( client == null || !client.IsSurvivor() || client.GetSurvivorSlot() <= 3 ) return;
+		if ( client == null || !client.IsSurvivor() /*|| client.GetSurvivorSlot() <= 3*/ ) return;
 		// Would've loved to optimize it so it won't play on the 4 survivors that will
 		// emit friendly fire lines by themselves, but apparently it's NOT slots
 		// or player entity order that dictates these 4 special survivors
@@ -2215,11 +2220,11 @@ survManager <-
 		if ("type" in params && params["type"])
 		{
 			if (params["type"] & DirectorScript.DMG_BULLET)
-				dmgType = 0;
+				dmgType = "DMG_BULLET";
 			else if (params["type"] & (1 << 7)) // DMG_CLUB
-				dmgType = 1;
+				dmgType = "DMG_CLUB";
 			else if (params["type"] & (1 << 2)) // DMG_SLASH
-				dmgType = 2;
+				dmgType = "DMG_SLASH";
 			
 			if (dmgType == null) return;
 			
@@ -2229,23 +2234,11 @@ survManager <-
 			!(params["type"] & (1 << 2))) // DMG_SLASH
 				return;*/
 		}
-		switch (dmgType)
-		{
-		case 0:
-			client.SetContext("damagetype", "DMG_BULLET", 1);
-			break;
-		case 1:
-			client.SetContext("damagetype", "DMG_CLUB", 1);
-			break;
-		case 2:
-			client.SetContext("damagetype", "DMG_SLASH", 1);
-			break;
-		}
 		
-		if (contextName != null)
-			client.SetContext("Subject", contextName, 1);
+		if (contextName == null)
+			contextName = "Unknown";
 		
-		DoEntFire("!self", "SpeakResponseConcept", "PlayerFriendlyFire", 0.5, null, client);
+		QueueSpeak(client, "PlayerFriendlyFire", 0.5, "subject:"+contextName+",damagetype:"+dmgType);
 	}
 	
 	function SpecCheck()
@@ -2641,6 +2634,26 @@ survManager <-
 		survManager.SpawnBot(0);
 		if (VSSMStartWepsInit == null) VSSMStartWepsInit = true;
 		if ("VSSMLoad" in this) delete this.VSSMLoad;
+		// garbage collection
+		for (local i = 0; i < VSSMEssentialBots.len(); i++)
+		{
+			if (VSSMEssentialBots[i] == null || !VSSMEssentialBots[i].IsValid())
+			{
+				VSSMEssentialBots.remove(i);
+				i = i - 1;
+			}
+		}
+		local keysToRemove = [];
+		foreach (key, value in infoSpawnedSurvsList)
+		{
+			local client = GetPlayerFromUserID(value);
+			if (client == null)
+				keysToRemove.append(key);
+		}
+		foreach (key, i in keysToRemove)
+		{
+			delete infoSpawnedSurvsList[i];
+		}
 	}
 	
 	function GetPosHack()
@@ -3097,7 +3110,7 @@ survManager <-
 			worldSpawn = Entities.First();
 		if (worldScope == null && worldSpawn.ValidateScriptScope())
 			worldScope = worldSpawn.GetScriptScope();
-		else
+		else if (worldScope == null)
 			return;
 		
 		if (!("VSSMResetChar" in worldScope) || worldScope.VSSMResetChar == null)
@@ -3172,7 +3185,7 @@ survManager <-
 		}
 	}
 	
-	function OnGameEvent_player_activate( params )
+	function OnGameEvent_player_connect_full( params )
 	{
 		if (!Settings.autoControlExtraBots || VSSMStartWepsInit == null) return;
 		
@@ -4270,9 +4283,9 @@ survManager <-
 									if (!isVisible) continue;
 									
 									local remarkContext = NetProps.GetPropString(closestRemark, "m_szRemarkContext");
-									extraSetPlayer.SetContext("subject", remarkContext, 0.1);
-									extraSetPlayer.SetContextNum("distance", (remarkOrigin-eyePos).Length(), 0.1);
-									DoEntFire("!self", "SpeakResponseConcept", "TLK_REMARK", 0, closestRemark, extraSetPlayer);
+									//extraSetPlayer.SetContext("subject", remarkContext, 1);
+									//extraSetPlayer.SetContextNum("distance", (remarkOrigin-eyePos).Length(), 1);
+									QueueSpeak(extraSetPlayer, "TLK_REMARK", 0, "subject:"+remarkContext+",distance:"+(remarkOrigin-eyePos).Length());
 								}
 							}
 						}
@@ -4344,7 +4357,8 @@ survManager <-
 			if (survList == null) {survList = RetrieveSurvList(false);}
 			for (local i = 0; i < survList.len(); i++)
 			{
-				if (NetProps.GetPropInt(survList[i], "m_iTeamNum") != 2)
+				if (NetProps.GetPropInt(survList[i], "m_iTeamNum") != 2 || 
+				VSSMEssentialBots.find(survList[i]) != null)
 				{
 					survList.remove(i);
 					i = i - 1;
@@ -5232,6 +5246,51 @@ survManager.IFReleaseFromSurvivorPositionRef <- survManager.IFReleaseFromSurvivo
 survManager.IFSetGlowEnabledRef <- survManager.IFSetGlowEnabled.weakref();
 survManager.IFClearContextRef <- survManager.IFClearContext.weakref();
 
+if (!("VSSM_rr_GetResponseTargets" in this) && survManager.GetSurvSet() == 1)
+{
+	this.VSSM_rr_GetResponseTargets <- this.rr_GetResponseTargets;
+	this.rr_GetResponseTargets <- function()
+	{
+		local responseTbl = {};
+		local survList = survManager.RetrieveSurvList(false);
+		foreach (key, client in survList)
+		{
+			local survChar = NetProps.GetPropInt(client, "m_survivorCharacter");
+			switch (survChar)
+			{
+			case 4:
+				responseTbl["Gambler"] <- client;
+				break;
+			case 5:
+				responseTbl["Producer"] <- client;
+				break;
+			case 7:
+				responseTbl["Coach"] <- client;
+				break;
+			case 6:
+				responseTbl["Mechanic"] <- client;
+				break;
+			case 0:
+				responseTbl["NamVet"] <- client;
+				break;
+			case 1:
+				responseTbl["TeenGirl"] <- client;
+				break;
+			case 3:
+				responseTbl["Biker"] <- client;
+				break;
+			case 2:
+				responseTbl["Manager"] <- client;
+				break;
+			default:
+				responseTbl["Unknown"] <- client;
+				break;
+			}
+		}
+		return responseTbl;
+	}
+}
+
 /*local worldSpawn = Entities.First();
 if (worldSpawn == null || !worldSpawn.ValidateScriptScope()) return;
 local worldScope = worldSpawn.GetScriptScope();
@@ -5273,9 +5332,6 @@ if (!FileToString(info_path))
 	\n
 	- removeExcessSurvivors (Remove survivor bots over the limit.)\n
 	\n
-	- forceFuncSurvSet (Force the mod into thinking the map's survivor set is the first (1) or second (2) group.\n
-	Not recommended to touch this unless you know what you're doing, or have a plugin to force survivor set 2 on all maps.)\n
-	\n
 	- survStartWeapons (List of weapons to give to newly-spawned survivors. Any weapon can be given, but primary weapons will have no reserve ammo.\n
 	Use the give command as a reference of items that can be given. Everything must be lower-case. There is one exclusive key for this setting.\n
 	To keep weapons given to the survivors including mutations, eg. a pistol or katana, use \"base\" and add to this setting as if it were a weapon.)\n
@@ -5311,7 +5367,7 @@ if (!FileToString(info_path))
 	- allowSurvSwapCmdForUsers (Allow swap control over bot survivors for everyone instead of just admins.\n
 	Does not use sb_takecontrol, uses a very hacky method to do so, can cause bugs with other scripts and plugins.)");*/
 	
-	StringToFile(info_path,"THIS IS ONLY AN INFO FILE IN CASE YOU DON'T KNOW WHAT THE SETTINGS DO.\nDon't edit this to change the settings.\nDelete this file and load a map with updated mod version to regenerate new info for updated settings.\n\nChat Commands (use with / or !):\n\t!survbot <number, leave empty for 1> <forced character, use first letter like z for zoey> <number of forced characters, optional and defaults to number of added bots> - Manually add survivor bots.\n\t!survkick - Remove a bot in your crosshair, or nearest to it.\n\t!survcount <number> - Set the survCount setting and refresh it in-game.\n\t!survorder <character list> - Change the survivor order the Auto-Manager spawns bots in. Leave empty to reset to default survivor order.\n\tExample: !survorder b z e f n c l r z l\n\t!survswap - Takeover control to your crosshair's nearest survivor bot. Will not work if you or the bot are pinned, downed, or dead.\n\t!survfix - Re-enables the Auto-Manager if you screw up the bot count.\n\tRemember folks, don't be a funnyman and type in 69 or 4001 or some other big number. It gets you nowhere.\n\n- survCount (Survivor count the mod aims for when auto-checking when a new player joins or map changes, etc.\nThe max amount that is mostly safe is 8, going beyond it can block special infected from spawning.\nThe game has a max limit of 18 survivors, trying to spawn more survivors will fail)\n\n- removeExcessSurvivors (Remove survivor bots over the limit.)\n\n- forceFuncSurvSet (Force the mod into thinking the map's survivor set is the first (1) or second (2) group.\nNot recommended to touch this unless you know what you're doing, or have a plugin to force survivor set 2 on all maps.)\n\n- survStartWeapons (List of weapons to give to newly-spawned survivors. Any weapon can be given, but primary weapons will have no reserve ammo.\nUse the give command as a reference of items that can be given. Everything must be lower-case. There is one exclusive key for this setting.\nTo keep weapons given to the survivors including mutations, eg. a pistol or katana, use \"base\" and add to this setting as if it were a weapon.)\n\n- survCharOrderL4D* (Survivor order to pick from. This order will loop back around if the entire order is already picked.\nsurvCharOrderL4D1 for maps that use playable L4D1 survivor set.\nsurvCharOrderL4D2 for maps that use playable L4D2 survivor set.)\n\n- fixUpgradePacks (Fixes upgrade packs for 5+ survivors. Side-effects:\nUpgrade packs will glow even if you already used them.\nSurvivor bots will gain 1 upgrade ammo by using it again due to bypassing VScript hooks.)\n\n- autoControlExtraBots (Auto-assigns any spectators to a survivor bot on join.\nMain use is for lobby. Untested as of 7/18/2023)\n\n- fixChargerHits (Fixes chargers unable to hit and toss same-character survivors like 3 Coaches acting as brick walls. Side-effects:\nThis is a fake effect, it is impossible to use the real effect with VScript as of 7/18/2023.\nAnimation does not work properly for clone survivors, they will spaz out and always loop first animation frames.\nLikely server-intensive, runs on a situational think hook.)\n\n- fixDefibrillator (Fixes defibrillators reviving the wrong survivors. Side-effects:\nUses text chat to tell players who defibbed who.\nPlugins won't respond properly to this hacky fix defib by VScript.\nL4D2 survivors don't defib at all on L4D1 survivor set if corresponding proper L4D1 survivor is not in game.\n{Example: If you don't have Louis, you can't defib Coach. If you don't have Bill, you can't defib Nick.}\nLikely server-intensive, DefibCheck function pops up in console being 2 miliseconds long.)\n\n- fixFriendlyFireLines (Fixes friendly fire lines not playing on the extra survivors.\nHowever, the Don't shoot teammates! instruction will not appear.)\n\n- restoreExtraSurvsItemsOnTransition (Let the mod store and restore the inventories of the 5th survivor and more.\nBy default, these extra survivors' inventories get wiped.)\n\n- allowSurvSwapCmdForUsers (Allow swap control over bot survivors for everyone instead of just admins.\nDoes not use sb_takecontrol, uses a very hacky method to do so, can cause bugs with other scripts and plugins.)");
+	StringToFile(info_path,"THIS IS ONLY AN INFO FILE IN CASE YOU DON'T KNOW WHAT THE SETTINGS DO.\nDon't edit this to change the settings.\nDelete this file and load a map with updated mod version to regenerate new info for updated settings.\n\nChat Commands (use with / or !):\n\t!survbot <number, leave empty for 1> <forced character, use first letter like z for zoey> <number of forced characters, optional and defaults to number of added bots> - Manually add survivor bots.\n\t!survkick - Remove a bot in your crosshair, or nearest to it.\n\t!survcount <number> - Set the survCount setting and refresh it in-game.\n\t!survorder <character list> - Change the survivor order the Auto-Manager spawns bots in. Leave empty to reset to default survivor order.\n\tExample: !survorder b z e f n c l r z l\n\t!survswap - Takeover control to your crosshair's nearest survivor bot. Will not work if you or the bot are pinned, downed, or dead.\n\t!survfix - Re-enables the Auto-Manager if you screw up the bot count.\n\tRemember folks, don't be a funnyman and type in 69 or 4001 or some other big number. It gets you nowhere.\n\n- survCount (Survivor count the mod aims for when auto-checking when a new player joins or map changes, etc.\nThe max amount that is mostly safe is 8, going beyond it can block special infected from spawning.\nThe game has a max limit of 18 survivors, trying to spawn more survivors will fail)\n\n- removeExcessSurvivors (Remove survivor bots over the limit.)\n\n- survStartWeapons (List of weapons to give to newly-spawned survivors. Any weapon can be given, but primary weapons will have no reserve ammo.\nUse the give command as a reference of items that can be given. Everything must be lower-case. There is one exclusive key for this setting.\nTo keep weapons given to the survivors including mutations, eg. a pistol or katana, use \"base\" and add to this setting as if it were a weapon.)\n\n- survCharOrderL4D* (Survivor order to pick from. This order will loop back around if the entire order is already picked.\nsurvCharOrderL4D1 for maps that use playable L4D1 survivor set.\nsurvCharOrderL4D2 for maps that use playable L4D2 survivor set.)\n\n- fixUpgradePacks (Fixes upgrade packs for 5+ survivors. Side-effects:\nUpgrade packs will glow even if you already used them.\nSurvivor bots will gain 1 upgrade ammo by using it again due to bypassing VScript hooks.)\n\n- autoControlExtraBots (Auto-assigns any spectators to a survivor bot on join.\nMain use is for lobby. Untested as of 7/18/2023)\n\n- fixChargerHits (Fixes chargers unable to hit and toss same-character survivors like 3 Coaches acting as brick walls. Side-effects:\nThis is a fake effect, it is impossible to use the real effect with VScript as of 7/18/2023.\nAnimation does not work properly for clone survivors, they will spaz out and always loop first animation frames.\nLikely server-intensive, runs on a situational think hook.)\n\n- fixDefibrillator (Fixes defibrillators reviving the wrong survivors. Side-effects:\nUses text chat to tell players who defibbed who.\nPlugins won't respond properly to this hacky fix defib by VScript.\nL4D2 survivors don't defib at all on L4D1 survivor set if corresponding proper L4D1 survivor is not in game.\n{Example: If you don't have Louis, you can't defib Coach. If you don't have Bill, you can't defib Nick.}\nLikely server-intensive, DefibCheck function pops up in console being 2 miliseconds long.)\n\n- fixFriendlyFireLines (Fixes friendly fire lines not playing on the extra survivors.\nHowever, the Don't shoot teammates! instruction will not appear.)\n\n- restoreExtraSurvsItemsOnTransition (Let the mod store and restore the inventories of the 5th survivor and more.\nBy default, these extra survivors' inventories get wiped.)\n\n- allowSurvSwapCmdForUsers (Allow swap control over bot survivors for everyone instead of just admins.\nDoes not use sb_takecontrol, uses a very hacky method to do so, can cause bugs with other scripts and plugins.)");
 }
 
 SpawnEntityFromTable("logic_relay", {
