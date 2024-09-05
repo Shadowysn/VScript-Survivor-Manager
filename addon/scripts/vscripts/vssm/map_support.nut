@@ -8,16 +8,75 @@ local function GetWorldSpawn()
 	return [worldSpawn, worldSpawn.GetScriptScope()];
 }
 
+//local g_existingPlys = [];
 survManager.AlterStrip1 <- function()
 {
-	survManager.AlterSurvivorNetProps(true);
+	survManager.AlterSurvivorNetProps(null, true);
+	/*g_existingPlys.clear();
+	for (local player; player = Entities.FindByClassname( player, "player" );)
+	{
+		if (player == null) continue;
+		g_existingPlys.append(player);
+	}*/
 	if (!("VSSMIFOvr" in this)) this.VSSMIFOvr <- null;
 }
 survManager.AlterStrip2 <- function()
 {
-	survManager.AlterSurvivorNetProps(false);
+	//local survList = survManager.RetrieveSurvList(false);
+	//survManager.AlterSurvivorNetProps(survList, false);
+	survManager.AlterSurvivorNetProps(null, false);
 	if ("VSSMIFOvr" in this) delete this.VSSMIFOvr;
+	
+	/*foreach (key, client in survList)
+	{
+		if (client == null || g_existingPlys.find(client) != null) continue;
+		
+		local userid = client.GetPlayerUserId();
+		infoSpawnedSurvsList[NetProps.GetPropInt(self, "m_character")] <- userid;
+		break;
+	}*/
 }
+
+/*survManager.DetermineCamOnPos <- function()
+{
+	local moveChildren = [];
+	local foundView = null;
+	for (local moveChild = self.FirstMoveChild(); moveChild != null; moveChild = moveChild.NextMovePeer())
+	{
+		if (!moveChild.IsPlayer() || NetProps.GetPropInt(moveChild, "m_lifeState") != 0)
+			continue;
+		
+		local viewEnt = NetProps.GetPropEntity(moveChild, "m_hViewEntity");
+		if (viewEnt != null)
+		{
+			switch (viewEnt.GetClassname())
+			{
+			case "point_viewcontrol":
+			case "point_viewcontrol_multiplayer":
+			case "point_viewcontrol_survivor":
+				foundView = viewEnt;
+				break;
+			}
+		}
+		
+		moveChildren.append(moveChild);
+		if (foundView != null) break;
+	}
+	if (foundView == null) return;
+	
+	foreach (k, client in moveChildren)
+	{
+		local viewEnt = NetProps.GetPropEntity(client, "m_hViewEntity");
+		if (viewEnt == null || viewEnt != foundView)
+			DoEntFire("!self", "Enable", "", 0, client, foundView);
+	}
+}
+
+survManager.IFSetViewControl <- function()
+{
+	DoEntFire("!self", "CallScriptFunction", "VSSMFunc", 0, null, self);
+	return true;
+}*/
 
 survManager.IFSpawnSurvivor <- function()
 {
@@ -37,7 +96,7 @@ survManager.IFSpawnSurvivor <- function()
 		DoEntFire("!self", "CallScriptFunction", "VSSMFunc", 0, null, self);
 		DoEntFire("!self", "SpawnSurvivor", "", 0, activator, self);
 		DoEntFire("!self", "CallScriptFunction", "VSSMFunc2", 0, null, self);
-		survManager.expectedInfoBots = survManager.expectedInfoBots + 1;
+		//survManager.expectedInfoBots = survManager.expectedInfoBots + 1;
 		return false;
 	}
 	else
@@ -46,6 +105,8 @@ survManager.IFSpawnSurvivor <- function()
 survManager.IFSpawnSurvivorRef <- survManager.IFSpawnSurvivor.weakref();
 survManager.AlterStrip1Ref <- survManager.AlterStrip1.weakref();
 survManager.AlterStrip2Ref <- survManager.AlterStrip2.weakref();
+//survManager.DetermineCamOnPosRef <- survManager.DetermineCamOnPos.weakref();
+//survManager.IFSetViewControlRef <- survManager.IFSetViewControl.weakref();
 
 local director = Entities.FindByClassname(null, "info_director");
 if (director != null && director.ValidateScriptScope())
@@ -69,7 +130,7 @@ if (director != null && director.ValidateScriptScope())
 			case "louis":		survPosChars.append(7);		break;
 			case "ellis":		survPosChars.append(3);		break;
 			case "francis":		survPosChars.append(6);		break;
-			//default:			survPosChars.append(null);	break;
+			default:			survPosChars.append(null);	break;
 			}
 		}
 		if (survPosList.len() == 0) return null;
@@ -118,6 +179,8 @@ if (director != null && director.ValidateScriptScope())
 			}
 			return null;
 		}
+		
+		local takenPos = [];
 		foreach (key, client in survList)
 		{
 			if (NetProps.GetPropInt(client, "m_iTeamNum") != 2) continue;
@@ -127,6 +190,10 @@ if (director != null && director.ValidateScriptScope())
 				survChar = GetEquivalentChar(survChar);
 			
 			if (survChar < 0 || survChar > 7 || survChar == null) continue;
+			
+			// Make sure to clear the taken positions if it's full
+			if (takenPos.len() == survPosLists[0].len())
+				takenPos.clear();
 			
 			//local survPosListLen = survPosLists[0].len();
 			
@@ -150,6 +217,19 @@ if (director != null && director.ValidateScriptScope())
 					if (charArrPos != null)
 						chosenPos = survPosLists[0][charArrPos];
 				}
+				
+				if (chosenPos == null)
+				{
+					// just pick whatever position pops up
+					foreach (k, position in survPosLists[0])
+					{
+						if (!(0 in takenPos) || takenPos.find(position) == null)
+						{
+							chosenPos = position;
+							break;
+						}
+					}
+				}
 			}
 			
 			/*if (dontAdvance == null)
@@ -166,6 +246,7 @@ if (director != null && director.ValidateScriptScope())
 			
 			if (chosenPos != null)
 			{
+				takenPos.append(chosenPos);
 				//printl("Teleporting "+GetCharacterDisplayName(client)+" to "+survChar)
 				DoEntFire("!self", "RunScriptCode", "self.__KeyValueFromString(\"targetname\",\"vssmtelehack\")", 0, null, chosenPos);
 				DoEntFire("!self", "CallScriptFunction", "IFOverride1", 0, null, client);
@@ -179,6 +260,7 @@ if (director != null && director.ValidateScriptScope())
 				continue;
 			}
 		}
+		takenPos.clear();
 		firstCharSurvs.clear();
 		return true;
 	}
@@ -232,7 +314,7 @@ survManager.UpdateMapEntHooking <- function()
 {
 	for (local survSpawner; survSpawner = Entities.FindByClassname( survSpawner, "info_l4d1_survivor_spawn" );)
 	{
-		// map-spawned spawners have m_iHammerID != 0
+		// map-spawned entities have m_iHammerID != 0
 		if (NetProps.GetPropInt(survSpawner, "m_iHammerID") <= 0 || !survSpawner.ValidateScriptScope()) continue;
 		
 		local spawnerScope = survSpawner.GetScriptScope();
@@ -245,6 +327,18 @@ survManager.UpdateMapEntHooking <- function()
 		if (!("VSSMFunc2" in spawnerScope))
 			spawnerScope.VSSMFunc2 <- survManager.AlterStrip2Ref;
 	}
+	/*for (local survPos; survPos = Entities.FindByClassname( survPos, "info_survivor_position" );)
+	{
+		if (NetProps.GetPropInt(survPos, "m_iHammerID") <= 0 || !survPos.ValidateScriptScope()) continue;
+		
+		local survPosScope = survPos.GetScriptScope();
+		local strToUse = "Input"+survManager.GetFromStringTable("SetViewControl", survPos);
+		if (!(strToUse in survPosScope))
+			survPosScope[strToUse] <- survManager.IFSetViewControlRef;
+		
+		if (!("VSSMFunc" in survPosScope))
+			survPosScope.VSSMFunc <- survManager.DetermineCamOnPosRef;
+	}*/
 }
 survManager.UpdateMapEntHooking();
 survManager.UpdateMapEntHookingRef <- survManager.UpdateMapEntHooking.weakref();
@@ -297,13 +391,25 @@ local function AttachItemFunc(scope, weaponName, overRideChar = null)
 
 switch (g_MapName)
 {
+	// The Passing
 case "c6m1_riverbank":
 	// stupid Valve employee left millions of empty survivor positions all over the place
 	for (local i = null; i = Entities.FindByClassname(i, "info_survivor_position");)
 	{
-		if ( NetProps.GetPropInt(i, "m_order") == 1 && !(0 in i.GetName()) )
+		local name = i.GetName();
+		switch (name)
 		{
-			i.Kill();
+		// TODO: adding support for SurvivorName checking in IFForceSurvivorPositions
+		// breaks with unnecessarily-marked positions for the L4D1 survivors
+		// Could this be rectified with dynamically checking existence of L4D1 survivor spawns?
+		case "zoey_start":
+		case "francis_start":
+			i.__KeyValueFromString("SurvivorName", "");
+			break;
+		default:
+			if ( NetProps.GetPropInt(i, "m_order") == 1 && !(0 in name) )
+				i.Kill();
+			break;
 		}
 	}
 	local relay = Entities.FindByName(null, "relay_intro_start");
@@ -352,10 +458,10 @@ case "c6m1_riverbank":
 					local introPos = Entities.FindByName(null, introPosName);
 					if (introPos != null)
 					{
-						DoEntFire("!self", "ReleaseFromSurvivorPosition", "", 0.0, null, client);
+						DoEntFire("!self", "ReleaseFromSurvivorPosition", "", 0.1, null, client);
 						
 						local introPosOrigin = introPos.GetOrigin();
-						DoEntFire("!self", "RunScriptCode", "self.SetOrigin(Vector("+introPosOrigin.x+","+introPosOrigin.y+","+introPosOrigin.z+"))", 0.0, null, client);
+						DoEntFire("!self", "RunScriptCode", "self.SetOrigin(Vector("+introPosOrigin.x+","+introPosOrigin.y+","+introPosOrigin.z+"))", 0.1, null, client);
 						DoEntFire("!self", "CallScriptFunction", "IFOverride1", 0.1, null, client);
 						DoEntFire("!self", "TeleportToSurvivorPosition", introPosName, 0.1, null, client);
 						DoEntFire("!self", "CallScriptFunction", "IFOverride0", 0.1, null, client);
@@ -731,4 +837,5 @@ case "cf_m5_highway":
 	// CF Map 3 calls RunScriptFile cf_npc_script on @director, delay it a bit
 	if (g_MapName == "cf_m3_evac")
 		DoEntFire("!self", "CallScriptFunction", "VSSMCFNPC", 0.5, null, worldSpawn[0]);
+	break;
 }

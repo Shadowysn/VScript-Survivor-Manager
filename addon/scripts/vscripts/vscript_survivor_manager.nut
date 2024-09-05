@@ -1,4 +1,4 @@
-try {
+//try {
 printl("Activating VScript Survivor Manager");
 
 /*
@@ -188,6 +188,7 @@ local SPAWNTYPE_CMD = 1;
 //local g_survBCharacter = [];
 //local g_survNCharacter = [];
 local g_survCharacter = {};
+//local g_existingPlys = [];
 local g_iBots = 0;
 local g_iBotAttempts = 0;
 local MAX_SPAWN_ATTEMPTS = 6;
@@ -289,7 +290,7 @@ survManager <-
 	//specTbl = {},
 	//startItemsGranted = [],
 	
-	expectedInfoBots = 0,
+	//expectedInfoBots = 0,
 	
 	// table of which weapons are special eg. melee keys for survStartWeapons
 	startWepsType = {},
@@ -297,6 +298,9 @@ survManager <-
 	
 	// enforced chars for SpawnBot, goes like [<character>, <number>]
 	enforcedChars = null,
+	
+	// table of changelevel entity indexes containing an array of first aid kit spawns
+	changeLevelsItems = {},
 	
 	/*function WarnIncompat()
 	{
@@ -494,6 +498,7 @@ survManager <-
 		fixChargerHits = true,
 		fixDefibrillator = true,
 		fixFriendlyFireLines = true,
+		autoCheckpointFirstAid = true,
 		restoreExtraSurvsItemsOnTransition = true,
 		allowSurvSwapCmdForUsers = false,
 	}
@@ -766,6 +771,7 @@ survManager <-
 	// --=EVENT=-- Fix takecontrolling from idle or joining
 	function SetCharacter(client, char, mode = null)
 	{
+		//printl("SetCharacter called with client: "+client+", char: "+char+", mode: "+mode);
 		if (char < 0 || char > 7) return;
 		if (mode != 0) NetProps.SetPropInt(client, "m_survivorCharacter", char);
 		switch (GetSurvSet())
@@ -2395,7 +2401,7 @@ survManager <-
 		local arrangedSlotsTbl = [];
 		for (local i = 0; i < slotsTbl.len(); i++)
 		{
-			if (slotsTbl[i] != null)
+			if ((i in slotsTbl) && slotsTbl[i] != null)
 				arrangedSlotsTbl.append(slotsTbl[i]);
 		}
 		slotsTbl.clear();
@@ -2437,14 +2443,25 @@ survManager <-
 			selectedSlots = [];
 			foreach (key, val in VSSMCharsInit)
 			{
-				local client = GetPlayerFromUserID(val);
-				if (NetProps.GetPropInt(client, "m_iTeamNum") != 2) continue;
-				if (client == null)
+				local client = null;
+				switch (typeof val)
 				{
-					VSSMCharsInit[key] = null;
-					continue;
+				case "instance":
+					if (val.IsValid())
+						client = val;
+					break;
+				case "integer":
+					client = GetPlayerFromUserID(val);
+					if (client == null)
+					{
+						VSSMCharsInit[key] = null;
+						continue;
+					}
+					if (NetProps.GetPropInt(client, "m_iTeamNum") != 2) continue;
+					VSSMCharsInit[key] = client;
+					break;
 				}
-				VSSMCharsInit[key] = client;
+				if (client == null) continue;
 				
 				local char = NetProps.GetPropInt(client, "m_survivorCharacter");
 				switch (char)
@@ -2482,44 +2499,43 @@ survManager <-
 		printl("VSSMStartWepsInit: "+VSSMStartWepsInit)*/
 		local gameSurvSlots = survManager.GetNumberOrderSlots(survList);
 		
-		local doDynamicOrder = (selectedSlots == null || selectedSlots.len() == 0);
-		local availableSurvs = null;
-		if (doDynamicOrder)
+		local doLobbyOrder = (selectedSlots != null && selectedSlots.len() != 0);
+		//local doLobbyOrder = true;
+		local availableSurvs = [];
+		foreach (k,v in order) {availableSurvs.append(order[k]);}
+		for (local i = 0; i < survList.len(); i++)
 		{
-			availableSurvs = [];
-			foreach (k,v in order) {availableSurvs.append(order[k]);}
-			for (local i = 0; i < survList.len(); i++)
+			if (NetProps.GetPropInt(survList[i], "m_iTeamNum") != 2) continue;
+			//if (i == key) continue; // ignore self
+			
+			if ("VSSMSpawned" in survList[i].GetScriptScope()) continue;
+			
+			local loopChar = NetProps.GetPropInt(survList[i], "m_survivorCharacter");
+			
+			local listLocArr = availableSurvs.find(loopChar);
+			if (listLocArr != null)
 			{
-				if (NetProps.GetPropInt(survList[i], "m_iTeamNum") != 2) continue;
-				//if (i == key) continue; // ignore self
-				
-				if ("VSSMSpawned" in survList[i].GetScriptScope()) continue;
-				
-				local loopChar = NetProps.GetPropInt(survList[i], "m_survivorCharacter");
-				
-				local listLocArr = availableSurvs.find(loopChar);
-				if (listLocArr != null)
-				{
-					availableSurvs.remove(listLocArr); i = i - 1;
-				}
-				
-				if (availableSurvs.len() == 0)
-				{foreach (k,v in order) {availableSurvs.append(order[k]);} i = i + 1;}
-				
-				/*printl(client+" runchecks "+survList[i]+" "+i+":");
-				foreach (k, v in availableSurvs)
-				{
-					if (k == availableSurvs.len()-1)
-						printl(v)
-					else
-						print(v+",")
-				}*/
+				availableSurvs.remove(listLocArr); i = i - 1;
 			}
+			
+			if (!(0 in availableSurvs))
+			{foreach (k,v in order) {availableSurvs.append(order[k]);} i = i + 1;}
+			
+			/*printl(client+" runchecks "+survList[i]+" "+i+":");
+			foreach (k, v in availableSurvs)
+			{
+				if (k == availableSurvs.len()-1)
+					printl(v)
+				else
+					print(v+",")
+			}*/
 		}
+		
 		local selSlot = 0;
 		foreach (key, client in survList)
 		{
 			if (NetProps.GetPropInt(client, "m_iTeamNum") != 2) continue;
+			//printl("looping through "+client)
 			
 			local clScope = client.GetScriptScope();
 			if (!("VSSMSpawned" in clScope))
@@ -2537,18 +2553,16 @@ survManager <-
 			survManager.enforcedChars[1] > 0)
 			{
 				survManager.SetCharacter(client, survManager.enforcedChars[0]);
+				//printl("SetCharacter client "+client+" to "+survManager.enforcedChars[0])
 				survManager.enforcedChars[1] = survManager.enforcedChars[1] - 1;
 				if (survManager.enforcedChars[1] <= 0)
-				{
 					survManager.enforcedChars = null;
-				}
 			}
 			else
 			{
 				local char = NetProps.GetPropInt(client, "m_survivorCharacter");
-				if (!doDynamicOrder)
+				if (doLobbyOrder)
 				{
-					availableSurvs = order;
 					local arrLoc = VSSMCharsInit.find(client);
 					local availableSurvsLen = availableSurvs.len();
 					if (arrLoc != null && (arrLoc in selectedSlots) && selectedSlots[arrLoc] != null)
@@ -2557,23 +2571,27 @@ survManager <-
 						if (availableSurvsLen-1 < selectedSlots[arrLoc])
 							selSlot = 0;
 						else
+						{
 							selSlot = selectedSlots[arrLoc];
+							foreach (key, val in selectedSlots)
+							{
+								if (val == 0 || val < arrLoc) continue;
+								// decrement every succeeding slot value by 1
+								selectedSlots[key] -= 1;
+							}
+						}
 					}
 					else
-					{
-						if (availableSurvsLen > selSlot)
-							selSlot = selSlot + 1;
-						else
-							selSlot = 0;
-					}
+						selSlot = 0;
 				}
+				
 				//printl("availableSurvs: ");
 				//g_ModeScript.DeepPrintTable(availableSurvs);
-				if (selectedSlots != null)
-				{
-					//printl("selectedSlots: ");
-					//g_ModeScript.DeepPrintTable(selectedSlots);
-				}
+				//if (selectedSlots != null)
+				//{
+				//	printl("selectedSlots: ");
+				//	g_ModeScript.DeepPrintTable(selectedSlots);
+				//}
 				
 				//printl("selSlot is "+selSlot);
 				if (availableSurvs[selSlot] != char)
@@ -2582,11 +2600,12 @@ survManager <-
 					//printl("SetCharacter client "+client+" to "+availableSurvs[selSlot])
 				}
 				
-				if (doDynamicOrder)
+				availableSurvs.remove(selSlot);
+				if (!(0 in availableSurvs))
 				{
-					availableSurvs.remove(selSlot);
-					if (availableSurvs.len() == 0)
-					{foreach (k,v in order) {availableSurvs.append(order[k]);}}
+					foreach (k,v in order) {availableSurvs.append(order[k]);}
+					doLobbyOrder = false;
+					if (selectedSlots != null) selectedSlots.clear();
 				}
 			}
 			
@@ -2610,20 +2629,6 @@ survManager <-
 		}
 		if (VSSMCharsInit != null)
 		{VSSMCharsInit = null;}
-		
-		// AlterSurvivorNetProps breaks here so move it to SpawnBot instead
-		/*if (!("VSSMSpTy" in this) || this.VSSMSpTy == SPAWNTYPE_CHECK)
-		{
-			local missingSurvs = survManager.Settings.survCount - survList.len();
-			if (missingSurvs > 0)
-			{
-				printl("[VSSM] Adding "+missingSurvs+" more bots as survCount setting is "+survManager.Settings.survCount);
-				survManager.SpawnBot(missingSurvs);
-			}
-		}
-		if ("VSSMSpTy" in this) {delete this.VSSMSpTy;}*/
-		
-		delete this.VSSMCheck;
 	}
 	
 	function RoundStart()
@@ -2634,6 +2639,66 @@ survManager <-
 		survManager.SpawnBot(0);
 		if (VSSMStartWepsInit == null) VSSMStartWepsInit = true;
 		if ("VSSMLoad" in this) delete this.VSSMLoad;
+		
+		if (survManager.Settings.autoCheckpointFirstAid)
+		{
+			local kitList = [];
+			for (local firstAid; firstAid = Entities.FindByClassname( firstAid, "weapon_first_aid_kit_spawn" );)
+			{
+				if (firstAid == null) continue;
+				kitList.append(firstAid);
+			}
+			
+			if (0 in kitList)
+			{
+				// TODO checking mins and maxs is not perfect
+				// changelevel trigger brushes can be non-cuboid or rotated
+				for (local changeLevel; changeLevel = Entities.FindByClassname( changeLevel, "info_changelevel" );)
+				{
+					if (changeLevel == null) continue;
+					
+					local changeLevelIdx = changeLevel.GetEntityIndex();
+					
+					local changeLevelPos = changeLevel.GetOrigin();
+					local changeLevelMins = changeLevelPos + NetProps.GetPropVector(changeLevel, "m_Collision.m_vecMins");
+					local changeLevelMaxs = changeLevelPos + NetProps.GetPropVector(changeLevel, "m_Collision.m_vecMaxs");
+					
+					foreach (k, firstAid in kitList)
+					{
+						local kitPos = firstAid.GetOrigin();
+						
+						local hasPos1 = (kitPos.x >= changeLevelMins.x && kitPos.y >= changeLevelMins.y && kitPos.z >= changeLevelMins.z);
+						local hasPos2 = (kitPos.x <= changeLevelMaxs.x && kitPos.y <= changeLevelMaxs.y && kitPos.z <= changeLevelMaxs.z);
+						if (!hasPos1 || !hasPos2) continue;
+						//if (!changeLevel.IsTouching(firstAid)) continue;
+						
+						local nearestNavArea = NavMesh.GetNearestNavArea(kitPos, 256, false, false);
+						if (nearestNavArea != null)
+						{
+							if (!nearestNavArea.HasSpawnAttributes((1 << 11))) // CHECKPOINT
+								continue;
+						}
+						
+						// Entity Handle typeof == instance
+						// Vector typeof == Vector
+						if (survManager.changeLevelsItems == null)
+							survManager.changeLevelsItems = {};
+						if (!(changeLevelIdx in survManager.changeLevelsItems))
+							survManager.changeLevelsItems[changeLevelIdx] <- [];
+						
+						survManager.changeLevelsItems[changeLevelIdx].append(firstAid);
+					}
+					
+					if (changeLevelIdx in survManager.changeLevelsItems)
+					{
+						survManager.changeLevelsItems[changeLevelIdx].insert(0, survManager.changeLevelsItems[changeLevelIdx].len());
+					}
+				}
+			}
+			
+			survManager.HandleCheckpointKits();
+		}
+		
 		// garbage collection
 		for (local i = 0; i < VSSMEssentialBots.len(); i++)
 		{
@@ -2656,10 +2721,116 @@ survManager <-
 		}
 	}
 	
+	function HandleCheckpointKits()
+	{
+		if (changeLevelsItems == null || survManager.Settings.survCount == 0) return;
+		
+		local idxsToRemove = null;
+		foreach (changeLevelIdx, kitList in changeLevelsItems)
+		{
+			local totalAidCount = 0;
+			foreach (key, aidKit in kitList)
+			{
+				if (aidKit == null || typeof aidKit != "instance" || !aidKit.IsValid()) continue;
+				
+				local count = NetProps.GetPropInt(aidKit, "m_itemCount");
+				if (count < 1) count = 1;
+				
+				totalAidCount += count;
+			}
+			if (totalAidCount == 0) continue;
+			
+			local addCount = survManager.Settings.survCount - totalAidCount;
+			
+			local shouldAdd = (addCount > 0);
+			// first key should always be number of our total iterated kits
+			for (local i = 0; (shouldAdd ? i < addCount : i > addCount); (shouldAdd ? i++ : i--))
+			{
+				if (kitList[0] >= kitList.len() - 1)
+					kitList[0] = 0;
+				
+				local iteratingKey = kitList[0] + 1;
+				switch (typeof kitList[iteratingKey])
+				{
+				case "instance":
+					if (kitList[iteratingKey] == null || !kitList[iteratingKey].IsValid())
+					{
+						kitList.remove(iteratingKey);
+						if (!(1 in kitList))
+						{
+							if (idxsToRemove == null) idxsToRemove = [];
+							idxsToRemove.append(changeLevelIdx);
+							i = addCount;
+							break;
+						}
+					}
+					else
+					{
+						if (shouldAdd)
+						{
+							//printl("Increasing "+kitList[iteratingKey]+"'s count by 1")
+							NetProps.SetPropInt(kitList[iteratingKey], "m_itemCount", NetProps.GetPropInt(kitList[iteratingKey], "m_itemCount") + 1);
+						}
+						else
+						{
+							//printl("Decreasing "+kitList[iteratingKey]+"'s count by 1")
+							local count = NetProps.GetPropInt(kitList[iteratingKey], "m_itemCount");
+							if (count == 1)
+							{
+								local kitData = [
+									kitList[iteratingKey].GetOrigin(),
+									kitList[iteratingKey].GetAngles(),
+									kitList[iteratingKey].GetName(),
+									NetProps.GetPropFloat(kitList[iteratingKey], "m_flGlowRange"),
+									NetProps.GetPropInt(kitList[iteratingKey], "m_nWeaponSkin"),
+									NetProps.GetPropInt(kitList[iteratingKey], "m_Collision.m_nSolidType"),
+								];
+								kitList[iteratingKey].Kill();
+								kitList[iteratingKey] = kitData;
+							}
+							else
+							{
+								NetProps.SetPropInt(kitList[iteratingKey], "m_itemCount", NetProps.GetPropInt(kitList[iteratingKey], "m_itemCount") - 1);
+							}
+						}
+						
+						kitList[0] += 1;
+					}
+					break;
+				case "array":
+					if (!shouldAdd) break;
+					//printl("Spawning new kit for "+kitList[iteratingKey])
+					local newKit = SpawnEntityFromTable("weapon_first_aid_kit_spawn", {
+						origin = kitList[iteratingKey][0],
+						angles = kitList[iteratingKey][1].ToKVString(),
+						targetname = kitList[iteratingKey][2],
+						spawnflags = (1 << 0) | (1 << 1),
+						count = 1,
+						glowrange = kitList[iteratingKey][3],
+						weaponskin = kitList[iteratingKey][4],
+						solid = kitList[iteratingKey][5],
+					});
+					if (newKit != null)
+					{
+						kitList[iteratingKey] = newKit;
+						kitList[0] += 1;
+					}
+					break;
+				}
+			}
+		}
+		if (idxsToRemove != null)
+		{
+			foreach (key, value in idxsToRemove)
+			{
+				delete changeLevelsItems[value];
+			}
+		}
+	}
+	
 	function GetPosHack()
 	{
 		local isSuccessful = null;
-		
 		if (activator != null)
 		{
 			local posEnt = NetProps.GetPropEntity(activator, "m_positionEntity");
@@ -2771,7 +2942,6 @@ survManager <-
 	function IFTeleportToSurvivorPosition()
 	{
 		if ("VSSMIFOvr" in this) return true;
-		//printl("IFTeleportToSurvivorPosition")
 		switch (NetProps.GetPropInt(self, "m_iTeamNum"))
 		{
 		case 2:
@@ -2830,7 +3000,6 @@ survManager <-
 	function IFReleaseFromSurvivorPosition()
 	{
 		if ("VSSMIFOvr" in this) return true;
-		//printl("IFTeleportToSurvivorPosition")
 		switch (NetProps.GetPropInt(self, "m_iTeamNum"))
 		{
 		case 2:
@@ -2856,7 +3025,6 @@ survManager <-
 	function IFSetGlowEnabled()
 	{
 		if ("VSSMIFOvr" in this) return true;
-		//printl("IFTeleportToSurvivorPosition")
 		switch (NetProps.GetPropInt(self, "m_iTeamNum"))
 		{
 		case 2:
@@ -3048,18 +3216,45 @@ survManager <-
 		survManager.SetCharacter(activator, NetProps.GetPropInt(activator, "m_survivorCharacter"), 0);
 	}
 	
-	// put the VSSMAllowRoundStart-less first map load code here
-	// for map transitions to work
-	function OnGameEvent_player_spawn( params )
+	function InitPlaySurvivor(client, userid = null)
 	{
-		local client = GetPlayerFromUserID( params["userid"] );
-		if ( !client.IsSurvivor() ) client = null;
+		if (g_iBots != 0 && IsPlayerABot(client))
+		{
+			g_iBots--;
+			g_iBotAttempts = 0;
+			
+			if (g_vecSummon != null)
+			{
+				client.SetOrigin(g_vecSummon);
+			}
+			
+			NetProps.SetPropInt(client, "m_iTeamNum", 2);
+			// BOT_CMD_RESET resets the AI to use currently set team's AI
+			// because AI is still the old team 4 AI which is unwanted
+			// in this case we want the default survivor bot AI
+			// so setting and resetting sb_l4d1_survivor_behavior ain't needed
+			CommandABot({
+				cmd = DirectorScript.BOT_CMD_RESET,
+				bot = client,
+			});
+			// setting m_iTeamNum to 2 in player_first_spawn seems to make the
+			// survivor initialize as a default survivor instead of the special passing survivors
+			DoEntFire("!self", "CancelCurrentScene", "", 0, null, client);
+		}
 		
-		// ok don't rely on player_first_spawn to add survivors to the list
-		// on map transitions the player_first_spawn event doesn't fire for 
-		// successfully transitioned survivors
-		if (client != null) SurvListFunc(params["userid"], true);
-		
+		if (NetProps.GetPropInt(client, "m_iTeamNum") == 2)
+		{
+			if (client.ValidateScriptScope())
+			{
+				local clScope = client.GetScriptScope();
+				if (!("VSSMSpawned" in clScope))
+				{ clScope.VSSMSpawned <- null; }
+			}
+		}
+	}
+	
+	function SpawnSurvivor(client, userid = null)
+	{
 		local worldSpawn = null;
 		local worldScope = null;
 		
@@ -3070,36 +3265,40 @@ survManager <-
 			if (worldSpawn.ValidateScriptScope())
 				worldScope = worldSpawn.GetScriptScope();
 			
-			if (VSSMAllowRoundStart == null && NetProps.GetPropInt(client, "m_iTeamNum") == 2)
+			if (NetProps.GetPropInt(client, "m_iTeamNum") == 2)
 			{
-				if (worldScope != null && 
-				(!("VSSMLoad" in worldScope) || worldScope.VSSMLoad == null))
+				if (VSSMAllowRoundStart == null)
 				{
-					worldScope.VSSMLoad <- RoundStart.weakref();
-					DoEntFire("!self", "CallScriptFunction", "VSSMLoad", 0, null, worldSpawn);
+					if (worldScope != null && 
+					(!("VSSMLoad" in worldScope) || worldScope.VSSMLoad == null))
+					{
+						worldScope.VSSMLoad <- RoundStart.weakref();
+						DoEntFire("!self", "CallScriptFunction", "VSSMLoad", 0, null, worldSpawn);
+					}
+					VSSMAllowRoundStart = true;
+					//WarnIncompat();
 				}
-				VSSMAllowRoundStart = true;
-				//WarnIncompat();
-			}
-			if (NetProps.GetPropInt(client, "m_iTeamNum") == 2 && 
-			VSSMStartWepsInit == null && client != null && 
-			client.GetSurvivorSlot() <= 3)
-			{
-				// todo: GetSurvivorSlot is possible hack but works since
-				// this is run only on first map load thanks to VSSMStartWepsInit
-				
-				if (VSSMCharsInit == null)
-					VSSMCharsInit = [];
-				
-				VSSMCharsInit.append(params["userid"]);
-				
-				// inconsistency inbound
-				// player_spawn players haven't been added to RetrieveSurvList yet
-				// but somehow player_spawn players also include the about-to-spawn
-				// players.....
-				local nSArrLoc = VSSMNoSpawnStartItemsTbl.find(params["userid"]);
-				if (nSArrLoc == null)
-					VSSMNoSpawnStartItemsTbl.append(params["userid"]);
+				if (VSSMStartWepsInit == null && client != null && 
+				client.GetSurvivorSlot() <= 3)
+				{
+					// todo: GetSurvivorSlot is possible hack but works since
+					// this is run only on first map load thanks to VSSMStartWepsInit
+					
+					if (userid == null) userid = client.GetPlayerUserId();
+					
+					if (VSSMCharsInit == null)
+						VSSMCharsInit = [];
+					
+					VSSMCharsInit.append(userid);
+					
+					// inconsistency inbound
+					// player_spawn players haven't been added to RetrieveSurvList yet
+					// but somehow player_spawn players also include the about-to-spawn
+					// players.....
+					local nSArrLoc = VSSMNoSpawnStartItemsTbl.find(userid);
+					if (nSArrLoc == null)
+						VSSMNoSpawnStartItemsTbl.append(userid);
+				}
 			}
 			//SpawnBot(0);
 		}
@@ -3119,70 +3318,60 @@ survManager <-
 		//survManager.SetCharacter(client, NetProps.GetPropInt(client, "m_survivorCharacter"), 0);
 	}
 	
+	// put the VSSMAllowRoundStart-less first map load code here
+	// for map transitions to work
+	function OnGameEvent_player_spawn( params )
+	{
+		local client = GetPlayerFromUserID( params["userid"] );
+		if ( !client.IsSurvivor() ) client = null;
+		
+		// ok don't rely on player_first_spawn to add survivors to the list
+		// on map transitions the player_first_spawn event doesn't fire for 
+		// successfully transitioned survivors
+		if (client != null)
+		{
+			SurvListFunc(params["userid"], true);
+			switch (NetProps.GetPropInt(client, "m_iTeamNum"))
+			{
+			case 4:
+				local char = NetProps.GetPropInt(client, "m_survivorCharacter");
+				if (!(char in ::infoSpawnedSurvsList) || GetPlayerFromUserID(::infoSpawnedSurvsList[char]) == null)
+					::infoSpawnedSurvsList[char] <- params["userid"];
+			default:
+				SpawnSurvivor(client, params["userid"]);
+				break;
+			}
+			
+			/*if (expectedInfoBots > 0)
+			{
+				::infoSpawnedSurvsList[NetProps.GetPropInt(client, "m_survivorCharacter")] <- params["userid"];
+				expectedInfoBots--;
+			}
+			else
+			{
+				if (IsPlayerABot(client))
+				{
+					if (g_iBots != 0)
+					{
+						g_iBots -= 1;
+						
+						SpawnSurvivor(client, params["userid"]);
+					}
+				}
+				else
+					SpawnSurvivor(client, params["userid"]);
+			}*/
+		}
+	}
+	
 	function OnGameEvent_player_first_spawn( params )
 	{
 		if ( !("userid" in params) ) return;
 		
-		/*local testCl = GetPlayerFromUserID( params["userid"] );
-		if ( testCl != null && testCl.IsValid() )
-		{
-			printl("m_survivorCharacter of "+testCl+": "+NetProps.GetPropInt(testCl, "m_survivorCharacter"))
-		}*/
-		
 		local client = GetPlayerFromUserID( params["userid"] );
 		if ( client == null || !client.IsValid() || !client.IsSurvivor() ) return;
 		
-		//local oldTeam = NetProps.GetPropInt(client, "m_iTeamNum");
-		
-		if (IsPlayerABot(client))
-		{
-			if (g_iBots > 0)
-			{
-				local char = NetProps.GetPropInt(client, "m_survivorCharacter");
-				if (char != 4) return; // bill check
-				g_iBots = g_iBots - 1;
-				g_iBotAttempts = 0;
-				
-				if (g_vecSummon != null)
-				{
-					client.SetOrigin(g_vecSummon);
-				}
-				
-				NetProps.SetPropInt(client, "m_iTeamNum", 2);
-				// BOT_CMD_RESET resets the AI to use currently set team's AI
-				// because AI is still the old team 4 AI which is unwanted
-				// in this case we want the default survivor bot AI
-				// so setting and resetting sb_l4d1_survivor_behavior ain't needed
-				CommandABot({
-					cmd = DirectorScript.BOT_CMD_RESET,
-					bot = client,
-				});
-				// setting m_iTeamNum to 2 in player_first_spawn seems to make the
-				// survivor initialize as a default survivor instead of the special passing survivors
-				DoEntFire("!self", "CancelCurrentScene", "", 0, null, client);
-			}
-			else if (expectedInfoBots > 0)
-			{
-				infoSpawnedSurvsList[NetProps.GetPropInt(client, "m_survivorCharacter")] <- params["userid"];
-			}
-		}
-		
-		if (NetProps.GetPropInt(client, "m_iTeamNum") == 2)
-		{
-			local worldSpawn = Entities.First();
-			if (worldSpawn.ValidateScriptScope() && client.ValidateScriptScope())
-			{
-				local clScope = client.GetScriptScope();
-				if (!("VSSMSpawned" in clScope))
-				{ clScope.VSSMSpawned <- null; }
-				local worldScope = worldSpawn.GetScriptScope();
-				if (!("VSSMCheck" in worldScope) || worldScope.VSSMCheck == null)
-				{
-					worldScope.VSSMCheck <- CharCheck.weakref();
-					DoEntFire("!self", "CallScriptFunction", "VSSMCheck", 0.0, null, worldSpawn);
-				}
-			}
-		}
+		InitPlaySurvivor(client, params["userid"]);
 	}
 	
 	function OnGameEvent_player_connect_full( params )
@@ -3738,13 +3927,39 @@ survManager <-
 	
 	function AlterChar1()
 	{
-		survManager.AlterSurvivorNetProps(true);
+		survManager.AlterSurvivorNetProps(null, true);
+		/*g_existingPlys.clear();
+		for (local player; player = Entities.FindByClassname( player, "player" );)
+		{
+			if (player == null) continue;
+			g_existingPlys.append(player);
+		}*/
 		delete this.VSSMFunc;
+	}
+	
+	function AlterCharMid()
+	{
+		//local survList = survManager.RetrieveSurvList(false);
+		survManager.AlterSurvivorNetProps(null, true);
+		//g_ModeScript.DeepPrintTable(survList);
 	}
 	
 	function AlterChar2()
 	{
-		survManager.AlterSurvivorNetProps(false);
+		//local survList = survManager.RetrieveSurvList(false);
+		//survManager.AlterSurvivorNetProps(survList, false);
+		survManager.AlterSurvivorNetProps(null, false);
+		/*foreach (key, client in survList)
+		{
+			if (g_iBots == 0) break;
+			if (client == null || g_existingPlys.find(client) != null) continue;
+			survManager.InitPlaySurvivor(client);
+			g_iBots--;
+			continue;
+		}*/
+		
+		survManager.CharCheck();
+		
 		if (g_iBots != 0)
 		{
 			g_iBotAttempts = g_iBotAttempts + 1;
@@ -3778,11 +3993,10 @@ survManager <-
 					}
 					else
 					{
-						printl("[VSSM]\nUnable to spawn bots!");
-						printl("Auto-Manager disabled.");
+						printl("[VSSM]\nUnable to spawn bots!\nAuto-Manager disabled.");
 					}
 				}
-				if (enforcedChars != null) enforcedChars = null;
+				if (survManager.enforcedChars != null) survManager.enforcedChars = null;
 				delete this.VSSMFunc2;
 				return;
 			}
@@ -3805,6 +4019,7 @@ survManager <-
 			VSSMSpawner = SpawnEntityFromTable("info_l4d1_survivor_spawn",{
 				character = 4,
 				targetname = "VSSMSpawner",
+				classname = "vssm_spawner",
 			});
 			if (!VSSMSpawner.ValidateScriptScope()) return;
 			
@@ -4354,7 +4569,9 @@ survManager <-
 		
 		if (spawnTypeNum == SPAWNTYPE_CHECK)
 		{
-			if (survList == null) {survList = RetrieveSurvList(false);}
+			if (survList == null)
+				survList = RetrieveSurvList(false);
+			
 			for (local i = 0; i < survList.len(); i++)
 			{
 				if (NetProps.GetPropInt(survList[i], "m_iTeamNum") != 2 || 
@@ -4402,6 +4619,8 @@ survManager <-
 					removeSurvs = removeSurvs - 1;
 				}
 			}
+			if (survManager.Settings.autoCheckpointFirstAid)
+				survManager.HandleCheckpointKits();
 		}
 		if (number == 0) return;
 		
@@ -4418,16 +4637,23 @@ survManager <-
 			worldScope.VSSMFunc <- AlterChar1.weakref();
 			DoEntFire("!self", "CallScriptFunction", "VSSMFunc", 0, null, worldSpawn);
 		}
+		
 		for (local i = 0; i < number; i++)
 		{
-			/*local testCl = null;
-			while ((testCl = Entities.FindByClassname(testCl, "player")) != null)
-			{
-				printl("testCl "+testCl+" found");
-				if (!testCl.IsValid()) continue;
-				printl("char: "+NetProps.GetPropInt(testCl, "m_survivorCharacter"));
-			}*/
+			// note to self: using this works on picking up the newly spawned surv
+			// system should ideally be rewritten to use this instead of generalizing
+			//DoEntFire("!self", "RunScriptCode", "survManager.DebugTest(false)", 0, null, worldSpawn);
 			DoEntFire("!self", "SpawnSurvivor", "", 0, null, VSSMSpawner);
+			// iterating through players every time here
+			// does not bode well for optimization, but for the interest of
+			// doing things in an instant to minimize the window of failure
+			// it can't be helped
+			if (!("VSSMFunc3" in worldScope) || worldScope.VSSMFunc3 == null)
+			{
+				worldScope.VSSMFunc3 <- AlterCharMid.weakref();
+			}
+			DoEntFire("!self", "CallScriptFunction", "VSSMFunc3", 0, null, worldSpawn);
+			//DoEntFire("!self", "RunScriptCode", "survManager.DebugTest(true)", 0, null, worldSpawn);
 			//SendToServerConsole("sb_add bill");
 			// dont use SendToServerConsole it has a bias to player-triggered funcs
 			// and is probably only triggerable with sv_cheats
@@ -4446,9 +4672,37 @@ survManager <-
 		}
 	}
 	
-	function AlterSurvivorNetProps(boolean = true)
+	/*function DebugTest(bool = false)
 	{
-		local survList = RetrieveSurvList(false);
+		local testCl = null;
+		switch (bool)
+		{
+		case true:
+			while ((testCl = Entities.FindByClassname(testCl, "player")) != null)
+			{
+				printl("testCl "+testCl+" found after spawned survivors");
+				if (!testCl.IsValid()) continue;
+				printl("team: "+NetProps.GetPropInt(testCl, "m_iTeamNum"));
+				printl("char: "+NetProps.GetPropInt(testCl, "m_survivorCharacter"));
+			}
+			break;
+		default:
+			while ((testCl = Entities.FindByClassname(testCl, "player")) != null)
+			{
+				printl("testCl "+testCl+" found before spawned survivors");
+				if (!testCl.IsValid()) continue;
+				printl("team: "+NetProps.GetPropInt(testCl, "m_iTeamNum"));
+				printl("char: "+NetProps.GetPropInt(testCl, "m_survivorCharacter"));
+			}
+			break;
+		}
+	}*/
+	
+	function AlterSurvivorNetProps(survList = null, boolean = true)
+	{
+		if (survList == null)
+			survList = RetrieveSurvList(false);
+		
 		switch (boolean)
 		{
 		case true:
@@ -4476,6 +4730,7 @@ survManager <-
 					NetProps.SetPropInt(client, "m_survivorCharacter", 8);
 				}*/
 			}
+			//g_ModeScript.DeepPrintTable(g_survCharacter);
 			break;
 		default:
 			//printl("AlterSurvivorNetProps false called")
@@ -4522,6 +4777,7 @@ survManager <-
 					g_survNCharacter.remove(i); i = i - 1;
 				}
 			}*/
+			//g_ModeScript.DeepPrintTable(g_survCharacter);
 			break;
 		}
 	}
@@ -4552,10 +4808,10 @@ survManager <-
 			origin = clOrigin.ToKVString(),
 			angles = QAngle(clAngles.x, clAngles.y, 0).ToKVString(),
 		});
-		DoEntFire("!self", "TeleportToSurvivorPosition", "VSSMFSHack", 0.0, null, client);
-		DoEntFire("!self", "ClearParent", "", 0.0, null, client);
-		DoEntFire("!self", "CallScriptFunction", "VSSMAlterFS", 0.0, client, worldSpawn);
-		DoEntFire("!self", "Kill", "", 0.0, null, hackPos);
+		DoEntFire("!self", "TeleportToSurvivorPosition", "VSSMFSHack", 0, null, client);
+		DoEntFire("!self", "ClearParent", "", 0, null, client);
+		DoEntFire("!self", "CallScriptFunction", "VSSMAlterFS", 0, client, worldSpawn);
+		DoEntFire("!self", "Kill", "", 0, null, hackPos);
 	}
 	function AlterFS1()
 	{
@@ -4785,9 +5041,9 @@ survManager <-
 				if (!("VSSMEvFunc2" in worldScope) || worldScope.VSSMEvFunc2 == null)
 					worldScope.VSSMEvFunc2 <- EvFunc2.weakref();
 				
-				DoEntFire("!self", "CallScriptFunction", "VSSMEvFunc1", 0.0, client, worldSpawn);
-				DoEntFire("!self", "FireEvent", "", 0.0, client, transItemsEvent);
-				DoEntFire("!self", "CallScriptFunction", "VSSMEvFunc2", 0.0, client, worldSpawn);
+				DoEntFire("!self", "CallScriptFunction", "VSSMEvFunc1", 0, client, worldSpawn);
+				DoEntFire("!self", "FireEvent", "", 0, client, transItemsEvent);
+				DoEntFire("!self", "CallScriptFunction", "VSSMEvFunc2", 0, client, worldSpawn);
 				return;
 			}
 		}
@@ -4918,7 +5174,7 @@ survManager <-
 							if ("dual" in VSSMTransItemsTbl[survSlotStr][key])
 							{
 								//local newWep2 = SpawnEntityFromTable(VSSMTransItemsTbl[survSlotStr][key].classname, newWepTbl);
-								//DoEntFire("!self", "Use", "", 0.0, client, newWep2);
+								//DoEntFire("!self", "Use", "", 0, client, newWep2);
 								NetProps.SetPropInt(newWep, "m_isDualWielding", VSSMTransItemsTbl[survSlotStr][key].dual);
 							}
 						}
@@ -4926,7 +5182,7 @@ survManager <-
 						if ("skin" in VSSMTransItemsTbl[survSlotStr][key])
 						{NetProps.SetPropInt(newWep, "m_nSkin", VSSMTransItemsTbl[survSlotStr][key].skin);}
 						NetProps.SetPropInt(newWep, "m_MoveType", 0);
-						DoEntFire("!self", "Use", "", 0.0, client, newWep);
+						DoEntFire("!self", "Use", "", 0, client, newWep);
 						break;
 					
 					case "extras":
@@ -4936,7 +5192,7 @@ survManager <-
 								origin = clOrigin,
 							});
 							NetProps.SetPropInt(newWep, "m_MoveType", 0);
-							DoEntFire("!self", "Use", "", 0.0, client, newWep);
+							DoEntFire("!self", "Use", "", 0, client, newWep);
 						}
 						break;
 					}
@@ -4989,7 +5245,7 @@ survManager <-
 				origin = clOrigin,
 			});
 			if (newWep != null)
-				DoEntFire("!self", "Use", "", 0.0, client, newWep);
+				DoEntFire("!self", "Use", "", 0, client, newWep);
 		}
 		
 		local function IterateTbl(key, val)
@@ -5053,7 +5309,7 @@ survManager <-
 			
 			if (newWep != null)
 			{
-				DoEntFire("!self", "Use", "", 0.0, client, newWep);
+				DoEntFire("!self", "Use", "", 0, client, newWep);
 				if (!hasKey) startWepsType[key] <- newType;
 			}
 			else
@@ -5166,9 +5422,12 @@ survManager <-
 		{
 			if (survPos == null) continue;
 			
+			// Cambalache 2 decide to reuse survival-only marked positions as rescue
+			// but it also revealed gamemode doesn't matter for finale rescues
+			// https://steamcommunity.com/sharedfiles/filedetails/?id=2888803926
 			//local survName = NetProps.GetPropString(survPos, "m_iszSurvivorName");
-			local gameModeStr = NetProps.GetPropString(survPos, "m_iszGameMode");
-			if (gameModeStr.len() != 0 && gameModeStr.find(baseMode) == null) continue;
+			//local gameModeStr = NetProps.GetPropString(survPos, "m_iszGameMode");
+			//if (gameModeStr.len() != 0 && gameModeStr.find(baseMode) == null) continue;
 			
 			survPositions.append(survPos);
 			local order = NetProps.GetPropInt(survPos, "m_order");
@@ -5362,12 +5621,15 @@ if (!FileToString(info_path))
 	- fixFriendlyFireLines (Fixes friendly fire lines not playing on the extra survivors.\n
 	However, the Don't shoot teammates! instruction will not appear.)\n
 	\n
+	- autoCheckpointFirstAid (Automatically alter the first aid kits to fit the number of survCount in checkpoints to next maps.\n
+	Doesn't affect starting saferoom.)\n
+	\n
 	- restoreExtraSurvsItemsOnTransition (Let the mod store and restore the inventories of the 5th survivor and more.\nBy default, these extra survivors' inventories get wiped.)\n
 	\n
 	- allowSurvSwapCmdForUsers (Allow swap control over bot survivors for everyone instead of just admins.\n
 	Does not use sb_takecontrol, uses a very hacky method to do so, can cause bugs with other scripts and plugins.)");*/
 	
-	StringToFile(info_path,"THIS IS ONLY AN INFO FILE IN CASE YOU DON'T KNOW WHAT THE SETTINGS DO.\nDon't edit this to change the settings.\nDelete this file and load a map with updated mod version to regenerate new info for updated settings.\n\nChat Commands (use with / or !):\n\t!survbot <number, leave empty for 1> <forced character, use first letter like z for zoey> <number of forced characters, optional and defaults to number of added bots> - Manually add survivor bots.\n\t!survkick - Remove a bot in your crosshair, or nearest to it.\n\t!survcount <number> - Set the survCount setting and refresh it in-game.\n\t!survorder <character list> - Change the survivor order the Auto-Manager spawns bots in. Leave empty to reset to default survivor order.\n\tExample: !survorder b z e f n c l r z l\n\t!survswap - Takeover control to your crosshair's nearest survivor bot. Will not work if you or the bot are pinned, downed, or dead.\n\t!survfix - Re-enables the Auto-Manager if you screw up the bot count.\n\tRemember folks, don't be a funnyman and type in 69 or 4001 or some other big number. It gets you nowhere.\n\n- survCount (Survivor count the mod aims for when auto-checking when a new player joins or map changes, etc.\nThe max amount that is mostly safe is 8, going beyond it can block special infected from spawning.\nThe game has a max limit of 18 survivors, trying to spawn more survivors will fail)\n\n- removeExcessSurvivors (Remove survivor bots over the limit.)\n\n- survStartWeapons (List of weapons to give to newly-spawned survivors. Any weapon can be given, but primary weapons will have no reserve ammo.\nUse the give command as a reference of items that can be given. Everything must be lower-case. There is one exclusive key for this setting.\nTo keep weapons given to the survivors including mutations, eg. a pistol or katana, use \"base\" and add to this setting as if it were a weapon.)\n\n- survCharOrderL4D* (Survivor order to pick from. This order will loop back around if the entire order is already picked.\nsurvCharOrderL4D1 for maps that use playable L4D1 survivor set.\nsurvCharOrderL4D2 for maps that use playable L4D2 survivor set.)\n\n- fixUpgradePacks (Fixes upgrade packs for 5+ survivors. Side-effects:\nUpgrade packs will glow even if you already used them.\nSurvivor bots will gain 1 upgrade ammo by using it again due to bypassing VScript hooks.)\n\n- autoControlExtraBots (Auto-assigns any spectators to a survivor bot on join.\nMain use is for lobby. Untested as of 7/18/2023)\n\n- fixChargerHits (Fixes chargers unable to hit and toss same-character survivors like 3 Coaches acting as brick walls. Side-effects:\nThis is a fake effect, it is impossible to use the real effect with VScript as of 7/18/2023.\nAnimation does not work properly for clone survivors, they will spaz out and always loop first animation frames.\nLikely server-intensive, runs on a situational think hook.)\n\n- fixDefibrillator (Fixes defibrillators reviving the wrong survivors. Side-effects:\nUses text chat to tell players who defibbed who.\nPlugins won't respond properly to this hacky fix defib by VScript.\nL4D2 survivors don't defib at all on L4D1 survivor set if corresponding proper L4D1 survivor is not in game.\n{Example: If you don't have Louis, you can't defib Coach. If you don't have Bill, you can't defib Nick.}\nLikely server-intensive, DefibCheck function pops up in console being 2 miliseconds long.)\n\n- fixFriendlyFireLines (Fixes friendly fire lines not playing on the extra survivors.\nHowever, the Don't shoot teammates! instruction will not appear.)\n\n- restoreExtraSurvsItemsOnTransition (Let the mod store and restore the inventories of the 5th survivor and more.\nBy default, these extra survivors' inventories get wiped.)\n\n- allowSurvSwapCmdForUsers (Allow swap control over bot survivors for everyone instead of just admins.\nDoes not use sb_takecontrol, uses a very hacky method to do so, can cause bugs with other scripts and plugins.)");
+	StringToFile(info_path,"THIS IS ONLY AN INFO FILE IN CASE YOU DON'T KNOW WHAT THE SETTINGS DO.\nDon't edit this to change the settings.\nDelete this file and load a map with updated mod version to regenerate new info for updated settings.\n\nChat Commands (use with / or !):\n\t!survbot <number, leave empty for 1> <forced character, use first letter like z for zoey> <number of forced characters, optional and defaults to number of added bots> - Manually add survivor bots.\n\t!survkick - Remove a bot in your crosshair, or nearest to it.\n\t!survcount <number> - Set the survCount setting and refresh it in-game.\n\t!survorder <character list> - Change the survivor order the Auto-Manager spawns bots in. Leave empty to reset to default survivor order.\n\tExample: !survorder b z e f n c l r z l\n\t!survswap - Takeover control to your crosshair's nearest survivor bot. Will not work if you or the bot are pinned, downed, or dead.\n\t!survfix - Re-enables the Auto-Manager if you screw up the bot count.\n\tRemember folks, don't be a funnyman and type in 69 or 4001 or some other big number. It gets you nowhere.\n\n- survCount (Survivor count the mod aims for when auto-checking when a new player joins or map changes, etc.\nThe max amount that is mostly safe is 8, going beyond it can block special infected from spawning.\nThe game has a max limit of 18 survivors, trying to spawn more survivors will fail)\n\n- removeExcessSurvivors (Remove survivor bots over the limit.)\n\n- survStartWeapons (List of weapons to give to newly-spawned survivors. Any weapon can be given, but primary weapons will have no reserve ammo.\nUse the give command as a reference of items that can be given. Everything must be lower-case. There is one exclusive key for this setting.\nTo keep weapons given to the survivors including mutations, eg. a pistol or katana, use \"base\" and add to this setting as if it were a weapon.)\n\n- survCharOrderL4D* (Survivor order to pick from. This order will loop back around if the entire order is already picked.\nsurvCharOrderL4D1 for maps that use playable L4D1 survivor set.\nsurvCharOrderL4D2 for maps that use playable L4D2 survivor set.)\n\n- fixUpgradePacks (Fixes upgrade packs for 5+ survivors. Side-effects:\nUpgrade packs will glow even if you already used them.\nSurvivor bots will gain 1 upgrade ammo by using it again due to bypassing VScript hooks.)\n\n- autoControlExtraBots (Auto-assigns any spectators to a survivor bot on join.\nMain use is for lobby. Untested as of 7/18/2023)\n\n- fixChargerHits (Fixes chargers unable to hit and toss same-character survivors like 3 Coaches acting as brick walls. Side-effects:\nThis is a fake effect, it is impossible to use the real effect with VScript as of 7/18/2023.\nAnimation does not work properly for clone survivors, they will spaz out and always loop first animation frames.\nLikely server-intensive, runs on a situational think hook.)\n\n- fixDefibrillator (Fixes defibrillators reviving the wrong survivors. Side-effects:\nUses text chat to tell players who defibbed who.\nPlugins won't respond properly to this hacky fix defib by VScript.\nL4D2 survivors don't defib at all on L4D1 survivor set if corresponding proper L4D1 survivor is not in game.\n{Example: If you don't have Louis, you can't defib Coach. If you don't have Bill, you can't defib Nick.}\nLikely server-intensive, DefibCheck function pops up in console being 2 miliseconds long.)\n\n- fixFriendlyFireLines (Fixes friendly fire lines not playing on the extra survivors.\nHowever, the Don't shoot teammates! instruction will not appear.)\n\n- autoCheckpointFirstAid (Automatically alter the first aid kits to fit the number of survCount in checkpoints to next maps.\nDoesn't affect starting saferoom.)\n\n- restoreExtraSurvsItemsOnTransition (Let the mod store and restore the inventories of the 5th survivor and more.\nBy default, these extra survivors' inventories get wiped.)\n\n- allowSurvSwapCmdForUsers (Allow swap control over bot survivors for everyone instead of just admins.\nDoes not use sb_takecontrol, uses a very hacky method to do so, can cause bugs with other scripts and plugins.)");
 }
 
 SpawnEntityFromTable("logic_relay", {
@@ -5383,7 +5645,7 @@ SpawnEntityFromTable("logic_relay", {
 }
 
 __CollectEventCallbacks(survManager, "OnGameEvent_", "GameEventCallbacks", RegisterScriptGameEventListener);
-} catch (err) {
+/*} catch (err) {
 	if (!IsDedicatedServer())
 	{
 		ClientPrint(null, 3, "\x03"+"[VSSM]"+"\x04"+"\nCODE ERROR: "+"\x01"+err);
@@ -5392,4 +5654,4 @@ __CollectEventCallbacks(survManager, "OnGameEvent_", "GameEventCallbacks", Regis
 	{
 		printl("[VSSM]\nCODE ERROR: "+err);
 	}
-}
+}*/
