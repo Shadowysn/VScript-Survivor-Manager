@@ -256,7 +256,7 @@ if (!("VSSMCharsInit" in this))
 if (!("VSSMEssentialBots" in this))
 { VSSMEssentialBots <- []; }
 
-if (!("survManager" in this) || survManager.hasRoundEnded != null)
+if (!("survManager" in this) || ("hasRoundEnded" in survManager))
 {
 
 local friendlyFireTime = 0;
@@ -277,7 +277,6 @@ else
 // welcome to Shadowysn's spaghetti emporium, we are now surving bots
 survManager <-
 {
-	hasRoundEnded = null,
 	// my thought for this var is to blanket-check through events to decide
 	// whether to do survivor character fixes like defibbing wrong person,
 	// upgrade packs only working for 4, passing-value characters able to take all 
@@ -399,7 +398,7 @@ survManager <-
 	
 	function OnGameEvent_round_end( params )
 	{
-		hasRoundEnded = true;
+		this.hasRoundEnded <- null;
 		transItemsGranted.clear();
 		//startItemsGranted.clear();
 	}
@@ -540,7 +539,7 @@ survManager <-
 						}
 					}
 				}
-				sData = format("%s\n\t%s = \n\t{%s \n\t}", sData, key, tableStr);
+				sData = format("%s\n\t%s = \n\t{%s\n\t}", sData, key, tableStr);
 				break;
 			case "array":
 				local tableStr = "";
@@ -1503,46 +1502,102 @@ survManager <-
 		}*/
 	}
 	
+	// TODO work on witch attack alteration more
+	/*function OnGameEvent_infected_hurt( params )
+	{
+		if ( !("attacker" in params) || !("entityid" in params) || 
+		!("type" in params) ) return;
+		
+		if (!(params["type"] & DirectorScript.DMG_BURN)) return;
+		
+		local witch = EntIndexToHScript( params["entityid"] );
+		if ( witch == null || !witch.IsValid() || witch.GetClassname() != "witch" ) return;
+		
+		local client = GetPlayerFromUserID( params["attacker"] );
+		if ( client == null || !client.IsValid() || !client.IsSurvivor() ) return;
+		
+		if ((params["type"] & (1 << 28))) return; // DMG_DIRECT according to SM, entityflame does this so ignore
+		
+		if (!witch.ValidateScriptScope()) return;
+		local witchScope = witch.GetScriptScope();
+		if (!("VSSMTarget" in witchScope) || witchScope.VSSMTarget == null ||
+		!witchScope.VSSMTarget.IsValid() || witchScope.VSSMTarget != client)
+		{
+			witchScope.VSSMTarget <- client;
+			
+			DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc1(self, activator)", 0, client, witch);
+			DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc2(self, activator)", 0.01, client, witch);
+		//	local effectEnt = NetProps.GetPropEntity(witch, "m_hEffectEntity");
+		//	if (effectEnt != null && effectEnt.GetClassname() == "entityflame")
+		//	{
+		//		//NetProps.SetPropEntity(effectEnt, "m_hOwnerEntity", client);
+		//		effectEnt.Kill();
+		//		
+		//		local newEffectEnt = SpawnEntityFromTable("entityflame", {
+		//			origin = effectEnt.GetOrigin()
+		//		});
+		//		NetProps.SetPropFloat(newEffectEnt, "m_flLifetime", NetProps.GetPropFloat(effectEnt, "m_flLifetime"));
+		//		NetProps.SetPropEntity(newEffectEnt, "m_hEntAttached", witch);
+		//		NetProps.SetPropInt(newEffectEnt, "m_iDangerSound", NetProps.GetPropInt(effectEnt, "m_iDangerSound"));
+		//		NetProps.SetPropEntity(witch, "m_hEffectEntity", newEffectEnt);
+		//	}
+		}
+	}*/
+	
 	/*function OnGameEvent_witch_harasser_set( params )
 	{
-		if ( !("userid" in params) ) return;
+		if ( !("userid" in params) || !("witchid" in params) ) return;
 		
 		local client = GetPlayerFromUserID( params["userid"] );
 		if ( client == null || !client.IsValid() || !client.IsSurvivor() ) return;
-		local witch = EntIndexToHScript(params["witchid"]);
+		local witch = EntIndexToHScript( params["witchid"] );
 		if ( witch == null || !witch.IsValid() ) return;
 		
-		local function SetWitchFocus(target)
-		{
-			local survList = survManager.RetrieveSurvList();
-			local tempChars = [];
-			
-			foreach (key, loopClient in survList)
-			{
-				tempChars.append(NetProps.GetPropInt(loopClient, "m_survivorCharacter"));
-				if (target != loopClient) NetProps.SetPropInt(loopClient, "m_survivorCharacter", 8);
-			}
-			//local newWitch = SpawnEntityFromTable("witch", {
-			//	origin = witch.GetOrigin().ToKVString(),
-			//	angles = witch.GetAngles().ToKVString(),
-			//	targetname = "ignoreMe"
-			//})
-			//witch.Kill();
-			//newWitch.TakeDamage(0,0,target);
-			//NetProps.SetPropFloat(witch, "m_rage", 0);
-			//witch.TakeDamage(0,0,target);
-			//witch.TakeDamage(0,DirectorScript.DMG_BURN,target)
-			//local fire = NetProps.GetPropEntity(witch, "m_hEffectEntity");
-			//if (fire != null) fire.Kill();
-			foreach (key, loopClient in survList)
-			{
-				if (target == loopClient) continue;
-				NetProps.SetPropInt(loopClient, "m_survivorCharacter", tempChars[key]);
-			}
-			tempChars.clear();
-		}
+		//local char = NetProps.GetPropInt(client, "m_survivorCharacter");
+		//if (client == GetPlayerFromCharacter(char)) return;
+		//printl("Clone survivor "+client+" harassed the witch")
 		
-		printl("Entity "+client+" harassed witch "+witch)
+	//	local oldTeam = NetProps.GetPropInt(client, "m_iTeamNum");
+	//	NetProps.SetPropInt(client, "m_iTeamNum", 3);
+	//	NetProps.SetPropFloat(witch, "m_rage", 1);
+	//	CommandABot({
+	//		bot = witch,
+	//		cmd = DirectorScript.BOT_CMD_ATTACK,
+	//		target = client,
+	//	});
+	//	NetProps.SetPropInt(client, "m_iTeamNum", oldTeam);
+		
+	//	local function SetWitchFocus(target)
+	//	{
+	//		local survList = survManager.RetrieveSurvList();
+	//		local tempChars = [];
+	//		
+	//		foreach (key, loopClient in survList)
+	//		{
+	//			tempChars.append(NetProps.GetPropInt(loopClient, "m_survivorCharacter"));
+	//			if (target != loopClient) NetProps.SetPropInt(loopClient, "m_survivorCharacter", 8);
+	//		}
+	//		//local newWitch = SpawnEntityFromTable("witch", {
+	//		//	origin = witch.GetOrigin().ToKVString(),
+	//		//	angles = witch.GetAngles().ToKVString(),
+	//		//	targetname = "ignoreMe"
+	//		//})
+	//		//witch.Kill();
+	//		//newWitch.TakeDamage(0,0,target);
+	//		//NetProps.SetPropFloat(witch, "m_rage", 0);
+	//		//witch.TakeDamage(0,0,target);
+	//		//witch.TakeDamage(0,DirectorScript.DMG_BURN,target)
+	//		//local fire = NetProps.GetPropEntity(witch, "m_hEffectEntity");
+	//		//if (fire != null) fire.Kill();
+	//		foreach (key, loopClient in survList)
+	//		{
+	//			if (target == loopClient) continue;
+	//			NetProps.SetPropInt(loopClient, "m_survivorCharacter", tempChars[key]);
+	//		}
+	//		tempChars.clear();
+	//	}
+	//	
+	//	printl("Entity "+client+" harassed witch "+witch)
 		
 		//printl("witch m_viewtarget: "+NetProps.GetPropVector(witch, "m_viewtarget"))
 		
@@ -1554,12 +1609,62 @@ survManager <-
 		//}
 		
 		// If no damage was inflicted, get the look target
-		local lookTarg = NetProps.GetPropEntity(witch, "m_clientLookatTarget");
-		if (lookTarg != null && lookTarg != client)
-		{
-			printl("witch m_clientLookatTarget: "+lookTarg)
-			SetWitchFocus(lookTarg);
-		}
+	//	local lookTarg = NetProps.GetPropEntity(witch, "m_clientLookatTarget");
+	//	printl("lookTarg: "+lookTarg)
+	//	if (lookTarg != null && lookTarg != client && lookTarg != GetPlayerFromCharacter(NetProps.GetPropInt(client, "m_survivorCharacter")))
+	//	{
+	//		//SetWitchFocus(lookTarg);
+	//		//local oldTeam = NetProps.GetPropInt(lookTarg, "m_iTeamNum");
+	//		//NetProps.SetPropInt(lookTarg, "m_iTeamNum", 3);
+	//		//NetProps.SetPropFloat(witch, "m_rage", 0);
+	//		// Immediate crash if the witch AI is reset here
+	//		//CommandABot({
+	//		//	bot = witch,
+	//		//	cmd = DirectorScript.BOT_CMD_RESET,
+	//		//});
+	//		DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc1(self, activator)", 0, lookTarg, witch);
+	//		DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc2(self, activator)", 0.01, lookTarg, witch);
+	//		
+	//		if (witch.ValidateScriptScope())
+	//		{
+	//			local witchScope = witch.GetScriptScope();
+	//			if (!("VSSMTarget" in witchScope) || witchScope.VSSMTarget == null ||
+	//			!witchScope.VSSMTarget.IsValid() || witchScope.VSSMTarget != client)
+	//			{
+	//				witchScope.VSSMTarget <- client;
+	//			}
+	//		}
+	//		//NetProps.SetPropFloat(witch, "m_rage", 1);
+	//		//CommandABot({
+	//		//	bot = witch,
+	//		//	cmd = DirectorScript.BOT_CMD_ATTACK,
+	//		//	target = lookTarg,
+	//		//});
+	//		//NetProps.SetPropInt(lookTarg, "m_iTeamNum", oldTeam);
+	//	}
+	}*/
+	/*function WitchAttackFunc1(self, activator)
+	{
+		if (activator == null) return;
+		
+		CommandABot({
+			bot = self,
+			cmd = DirectorScript.BOT_CMD_RESET,
+		});
+	}
+	function WitchAttackFunc2(self, activator)
+	{
+		if (activator == null) return;
+		
+		local oldTeam = NetProps.GetPropInt(activator, "m_iTeamNum");
+		NetProps.SetPropInt(activator, "m_iTeamNum", 3);
+		NetProps.SetPropFloat(self, "m_rage", 1);
+		CommandABot({
+			bot = self,
+			cmd = DirectorScript.BOT_CMD_ATTACK,
+			target = activator,
+		});
+		NetProps.SetPropInt(activator, "m_iTeamNum", oldTeam);
 	}*/
 	
 	/*function OnGameEvent_upgrade_item_already_used( params )
@@ -1576,7 +1681,7 @@ survManager <-
 		
 		local client = GetPlayerFromUserID( params["userid"] );
 		if ( client == null || !client.IsValid() ) return;
-		local upgradeBox = EntIndexToHScript(params["upgradeid"]);
+		local upgradeBox = EntIndexToHScript( params["upgradeid"] );
 		if ( upgradeBox == null || !upgradeBox.IsValid() || upgradeBox.GetClassname().slice(0, 13) != "upgrade_ammo_" || !upgradeBox.ValidateScriptScope() ) return;
 		
 		NetProps.SetPropInt(upgradeBox, "m_itemCount", 4); // didn't know about this, doh
@@ -1627,17 +1732,20 @@ survManager <-
 								splitscreenplayer = 0,
 							});*/
 							
-							this.userChar <- [
-								NetProps.GetPropInt(activator, "m_survivorCharacter"),
-								activatorId,
-							];
 							if (!("userDo" in this))
 							{
 								this.userDo <- function()
 								{
 									NetProps.SetPropInt(self, "m_iUsedBySurvivorsMask", 1);
 									
-									if (activator != null) NetProps.SetPropInt(activator, "m_survivorCharacter", 0);
+									if (activator != null)
+									{
+										this.userChar <- [
+											NetProps.GetPropInt(activator, "m_survivorCharacter"),
+											activator.GetPlayerUserId(),
+										];
+										NetProps.SetPropInt(activator, "m_survivorCharacter", 0);
+									}
 								}
 							}
 							if (!("userSet" in this))
@@ -2725,6 +2833,7 @@ survManager <-
 	{
 		if (changeLevelsItems == null || survManager.Settings.survCount == 0) return;
 		
+		try {
 		local idxsToRemove = null;
 		foreach (changeLevelIdx, kitList in changeLevelsItems)
 		{
@@ -2741,15 +2850,64 @@ survManager <-
 			if (totalAidCount == 0) continue;
 			
 			local addCount = survManager.Settings.survCount - totalAidCount;
-			
+			//printl("addCount is "+addCount)
 			local shouldAdd = (addCount > 0);
+			//printl("shouldAdd is "+shouldAdd)
+			local iteratingNum = shouldAdd ? 1 : -1;
+			
+			local addOffset = true;
+			
 			// first key should always be number of our total iterated kits
 			for (local i = 0; (shouldAdd ? i < addCount : i > addCount); (shouldAdd ? i++ : i--))
 			{
-				if (kitList[0] >= kitList.len() - 1)
-					kitList[0] = 0;
+				/*switch (shouldAdd)
+				{
+				case true:
+					if (kitList[0] == kitList.len())
+						kitList[0] = 1;
+					break;
+				default:
+					if (kitList[0] == 0)
+						kitList[0] = kitList.len() - 1;
+					break;
+				}*/
+				switch (kitList[0])
+				{
+				case kitList.len():
+					kitList[0] = 1;
+					break;
+				case 0:
+					kitList[0] = kitList.len() - 1;
+					break;
+				}
+				if (addOffset)
+				{
+					switch (shouldAdd)
+					{
+					case true:
+						if (typeof kitList[kitList[0]] == "instance" && kitList[kitList[0]].IsValid())
+							kitList[0] += iteratingNum;
+						break;
+					default:
+						if (typeof kitList[kitList[0]] == "array" && 0 in kitList[kitList[0]])
+							kitList[0] += iteratingNum;
+						break;
+					}
+					switch (kitList[0])
+					{
+					case kitList.len():
+						kitList[0] = 1;
+						break;
+					case 0:
+						kitList[0] = kitList.len() - 1;
+						break;
+					}
+					addOffset = false;
+				}
+				//printl("kitList[0] is "+kitList[0])
+				//printl("kitList.len() is "+kitList.len())
 				
-				local iteratingKey = kitList[0] + 1;
+				local iteratingKey = kitList[0];
 				switch (typeof kitList[iteratingKey])
 				{
 				case "instance":
@@ -2769,7 +2927,29 @@ survManager <-
 						if (shouldAdd)
 						{
 							//printl("Increasing "+kitList[iteratingKey]+"'s count by 1")
-							NetProps.SetPropInt(kitList[iteratingKey], "m_itemCount", NetProps.GetPropInt(kitList[iteratingKey], "m_itemCount") + 1);
+							// m_itemCount does not transfer over changelevels
+							//NetProps.SetPropInt(kitList[iteratingKey], "m_itemCount", NetProps.GetPropInt(kitList[iteratingKey], "m_itemCount") + 1);
+							// Bite the bullet and spawn new first aid kit spawns
+							local newKit = SpawnEntityFromTable("weapon_first_aid_kit_spawn", {
+								origin = kitList[iteratingKey].GetOrigin(),
+								angles = kitList[iteratingKey].GetAngles().ToKVString(),
+								targetname = kitList[iteratingKey].GetName(),
+								spawnflags = NetProps.GetPropInt(kitList[iteratingKey], "m_spawnflags") | (1 << 0), // Enable Physics
+								count = 1,
+								glowrange = NetProps.GetPropFloat(kitList[iteratingKey], "m_flGlowRange"),
+								weaponskin = NetProps.GetPropInt(kitList[iteratingKey], "m_nWeaponSkin"),
+								solid = NetProps.GetPropInt(kitList[iteratingKey], "m_Collision.m_nSolidType"),
+							});
+							if (newKit != null)
+							{
+								if (iteratingKey + 1 == kitList.len())
+									kitList.append(newKit);
+								else
+									kitList.insert(iteratingKey + 1, newKit);
+								kitList[0] += iteratingNum;
+								
+								newKit.ApplyAbsVelocityImpulse(Vector((RandomInt(0, 1) == 1) ? 20 : -20, (RandomInt(0, 1) == 1) ? 20 : -20, (RandomInt(0, 1) == 1) ? 20 : -20));
+							}
 						}
 						else
 						{
@@ -2781,6 +2961,7 @@ survManager <-
 									kitList[iteratingKey].GetOrigin(),
 									kitList[iteratingKey].GetAngles(),
 									kitList[iteratingKey].GetName(),
+									NetProps.GetPropInt(kitList[iteratingKey], "m_spawnflags"),
 									NetProps.GetPropFloat(kitList[iteratingKey], "m_flGlowRange"),
 									NetProps.GetPropInt(kitList[iteratingKey], "m_nWeaponSkin"),
 									NetProps.GetPropInt(kitList[iteratingKey], "m_Collision.m_nSolidType"),
@@ -2793,28 +2974,34 @@ survManager <-
 								NetProps.SetPropInt(kitList[iteratingKey], "m_itemCount", NetProps.GetPropInt(kitList[iteratingKey], "m_itemCount") - 1);
 							}
 						}
-						
-						kitList[0] += 1;
+						kitList[0] += iteratingNum;
 					}
 					break;
 				case "array":
-					if (!shouldAdd) break;
+					if (!shouldAdd)
+					{
+						kitList[0] += iteratingNum;
+						break;
+					}
 					//printl("Spawning new kit for "+kitList[iteratingKey])
 					local newKit = SpawnEntityFromTable("weapon_first_aid_kit_spawn", {
 						origin = kitList[iteratingKey][0],
 						angles = kitList[iteratingKey][1].ToKVString(),
 						targetname = kitList[iteratingKey][2],
-						spawnflags = (1 << 0) | (1 << 1),
+						spawnflags = kitList[iteratingKey][3],
 						count = 1,
-						glowrange = kitList[iteratingKey][3],
-						weaponskin = kitList[iteratingKey][4],
-						solid = kitList[iteratingKey][5],
+						glowrange = kitList[iteratingKey][4],
+						weaponskin = kitList[iteratingKey][5],
+						solid = kitList[iteratingKey][6],
 					});
 					if (newKit != null)
 					{
 						kitList[iteratingKey] = newKit;
-						kitList[0] += 1;
 					}
+					kitList[0] += iteratingNum;
+					break;
+				default:
+					kitList[0] += iteratingNum;
 					break;
 				}
 			}
@@ -2825,6 +3012,15 @@ survManager <-
 			{
 				delete changeLevelsItems[value];
 			}
+		}
+		
+		/*foreach (changeLevelIdx, kitList in changeLevelsItems)
+		{
+			g_ModeScript.DeepPrintTable(kitList);
+		}*/
+		
+		} catch (err) {
+			ClientPrint(null, 3, "\x03"+"[VSSM] "+"\x01"+"Something went wrong with autoCheckpointFirstAid! Error: "+err);
 		}
 	}
 	
@@ -2928,6 +3124,7 @@ survManager <-
 				if (infoBot != null)
 				{
 					DoEntFire("!self", "Kill", "", 0, activator, infoBot);
+					printl("[VSSM] Game tried to remove survivor ("+self.GetPlayerName()+", "+self+") with Kill input. VSSM has forwarded input to Team 4 survivor.");
 					return false;
 				}
 			}
@@ -2937,6 +3134,14 @@ survManager <-
 			if (IsPlayerABot(self)) return true;
 			break;
 		}
+		printl("[VSSM] Game tried to remove survivor ("+self.GetPlayerName()+", "+self+") with Kill input. VSSM has blocked input.");
+		return false;
+	}
+	// It's a massive fuckup to ever even fire KillHierarchy on any player once
+	// Don't ever allow it to go through
+	function IFKillHierarchy()
+	{
+		error("[VSSM][WARNING] Game tried to REMOVE SURVIVOR IMPROPERLY ("+self.GetPlayerName()+", "+self+") with KillHierarchy input! VSSM has blocked input, but beware!\n");
 		return false;
 	}
 	function IFTeleportToSurvivorPosition()
@@ -3101,6 +3306,10 @@ survManager <-
 			if (!(strToUse in clScope))
 				clScope[strToUse] <- IFKillRef;
 			
+			strToUse = "Input"+GetFromStringTable("KillHierarchy", worldSpawn);
+			if (!(strToUse in clScope))
+				clScope[strToUse] <- IFKillHierarchyRef;
+			
 			strToUse = "Input"+GetFromStringTable("TeleportToSurvivorPosition", worldSpawn);
 			if (!(strToUse in clScope))
 				clScope[strToUse] <- IFTeleportToSurvivorPositionRef;
@@ -3129,6 +3338,10 @@ survManager <-
 			local worldSpawn = Entities.First();
 			local strToUse = "Input"+GetFromStringTable("Kill", worldSpawn);
 			if ((strToUse in clScope) && clScope[strToUse] == IFKillRef)
+				delete clScope[strToUse];
+			
+			strToUse = "Input"+GetFromStringTable("KillHierarchy", worldSpawn);
+			if ((strToUse in clScope) && clScope[strToUse] == IFKillHierarchyRef)
 				delete clScope[strToUse];
 			
 			strToUse = "Input"+GetFromStringTable("TeleportToSurvivorPosition", worldSpawn);
@@ -4622,10 +4835,18 @@ survManager <-
 			if (survManager.Settings.autoCheckpointFirstAid)
 				survManager.HandleCheckpointKits();
 		}
-		if (number == 0) return;
+		if (number == 0)
+		{
+			survManager.CharCheck();
+			return;
+		}
 		
 		EnsureSpawner();
-		if (VSSMSpawner == null) return;
+		if (VSSMSpawner == null)
+		{
+			survManager.CharCheck();
+			return;
+		}
 		
 		if (g_vecSummon != null) VSSMSpawner.SetOrigin(g_vecSummon);
 		
@@ -4640,9 +4861,6 @@ survManager <-
 		
 		for (local i = 0; i < number; i++)
 		{
-			// note to self: using this works on picking up the newly spawned surv
-			// system should ideally be rewritten to use this instead of generalizing
-			//DoEntFire("!self", "RunScriptCode", "survManager.DebugTest(false)", 0, null, worldSpawn);
 			DoEntFire("!self", "SpawnSurvivor", "", 0, null, VSSMSpawner);
 			// iterating through players every time here
 			// does not bode well for optimization, but for the interest of
@@ -4653,7 +4871,6 @@ survManager <-
 				worldScope.VSSMFunc3 <- AlterCharMid.weakref();
 			}
 			DoEntFire("!self", "CallScriptFunction", "VSSMFunc3", 0, null, worldSpawn);
-			//DoEntFire("!self", "RunScriptCode", "survManager.DebugTest(true)", 0, null, worldSpawn);
 			//SendToServerConsole("sb_add bill");
 			// dont use SendToServerConsole it has a bias to player-triggered funcs
 			// and is probably only triggerable with sv_cheats
@@ -4671,32 +4888,6 @@ survManager <-
 			DoEntFire("!self", "CallScriptFunction", "VSSMFunc2", 0, null, worldSpawn);
 		}
 	}
-	
-	/*function DebugTest(bool = false)
-	{
-		local testCl = null;
-		switch (bool)
-		{
-		case true:
-			while ((testCl = Entities.FindByClassname(testCl, "player")) != null)
-			{
-				printl("testCl "+testCl+" found after spawned survivors");
-				if (!testCl.IsValid()) continue;
-				printl("team: "+NetProps.GetPropInt(testCl, "m_iTeamNum"));
-				printl("char: "+NetProps.GetPropInt(testCl, "m_survivorCharacter"));
-			}
-			break;
-		default:
-			while ((testCl = Entities.FindByClassname(testCl, "player")) != null)
-			{
-				printl("testCl "+testCl+" found before spawned survivors");
-				if (!testCl.IsValid()) continue;
-				printl("team: "+NetProps.GetPropInt(testCl, "m_iTeamNum"));
-				printl("char: "+NetProps.GetPropInt(testCl, "m_survivorCharacter"));
-			}
-			break;
-		}
-	}*/
 	
 	function AlterSurvivorNetProps(survList = null, boolean = true)
 	{
@@ -5500,6 +5691,7 @@ survManager.OnGameEvent_charger_carry_start <- weakRef;
 survManager.IFOverride0Ref <- survManager.IFOverride0.weakref();
 survManager.IFOverride1Ref <- survManager.IFOverride1.weakref();
 survManager.IFKillRef <- survManager.IFKill.weakref();
+survManager.IFKillHierarchyRef <- survManager.IFKillHierarchy.weakref();
 survManager.IFTeleportToSurvivorPositionRef <- survManager.IFTeleportToSurvivorPosition.weakref();
 survManager.IFReleaseFromSurvivorPositionRef <- survManager.IFReleaseFromSurvivorPosition.weakref();
 survManager.IFSetGlowEnabledRef <- survManager.IFSetGlowEnabled.weakref();
@@ -5645,6 +5837,9 @@ SpawnEntityFromTable("logic_relay", {
 }
 
 __CollectEventCallbacks(survManager, "OnGameEvent_", "GameEventCallbacks", RegisterScriptGameEventListener);
+
+// unused for now, not finished
+//IncludeScript( "vscript_music_set", getroottable() );
 /*} catch (err) {
 	if (!IsDedicatedServer())
 	{
