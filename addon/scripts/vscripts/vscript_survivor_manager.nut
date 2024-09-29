@@ -1502,49 +1502,85 @@ survManager <-
 		}*/
 	}
 	
+	// --=EVENT=-- Fix for fake L4D2 survivors using L4D1 rescue closet callouts
+	function OnGameEvent_survivor_call_for_help( params )
+	{
+		if ( GetSurvSet() != 1 || !("userid" in params) || !("subject" in params) ) return;
+		
+		local client = GetPlayerFromUserID( params["userid"] );
+		if ( client == null ) return;
+		
+		local char = NetProps.GetPropInt(client, "m_survivorCharacter");
+		switch (char)
+		{
+		case 4: case 5: case 6: case 7:
+			break;
+		default:
+			return;
+			break;
+		}
+		
+		local rescue = EntIndexToHScript( params["subject"] );
+		if ( rescue == null ) return;
+		
+		local who = client.GetContext("who");
+		QueueSpeak(rescue, "CallForRescue", 0, "who:"+who);
+	}
+	
 	// TODO work on witch attack alteration more
 	/*function OnGameEvent_infected_hurt( params )
 	{
 		if ( !("attacker" in params) || !("entityid" in params) || 
 		!("type" in params) ) return;
 		
-		if (!(params["type"] & DirectorScript.DMG_BURN)) return;
-		
 		local witch = EntIndexToHScript( params["entityid"] );
-		if ( witch == null || !witch.IsValid() || witch.GetClassname() != "witch" ) return;
+		if ( witch == null || !witch.IsValid() || witch.GetClassname() != "witch" || NetProps.GetPropInt(witch, "m_lifeState") != 0 ) return;
 		
 		local client = GetPlayerFromUserID( params["attacker"] );
-		if ( client == null || !client.IsValid() || !client.IsSurvivor() ) return;
+		if ( client == null || !client.IsValid() || !client.IsSurvivor() || NetProps.GetPropInt(client, "m_lifeState") != 0 ) return;
 		
-		if ((params["type"] & (1 << 28))) return; // DMG_DIRECT according to SM, entityflame does this so ignore
+		if ((params["type"] & (1 << 28))) return; 
 		
-		if (!witch.ValidateScriptScope()) return;
 		local witchScope = witch.GetScriptScope();
-		if (!("VSSMTarget" in witchScope) || witchScope.VSSMTarget == null ||
-		!witchScope.VSSMTarget.IsValid() || witchScope.VSSMTarget != client)
+		local hasTarget = ("VSSMTarget" in witchScope && witchScope.VSSMTarget != null && witchScope.VSSMTarget.IsValid());
+		// (1 << 28) DMG_DIRECT according to SM, entityflame does this so ignore
+		if (
+		(params["type"] & DirectorScript.DMG_BURN && !(params["type"] & (1 << 28)))
+		 || 
+		(witchScope == null || !hasTarget)
+		)
 		{
-			witchScope.VSSMTarget <- client;
+			if (witchScope == null)
+			{
+				if (!witch.ValidateScriptScope()) return;
+				witchScope = witch.GetScriptScope();
+			}
 			
-			DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc1(self, activator)", 0, client, witch);
-			DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc2(self, activator)", 0.01, client, witch);
-		//	local effectEnt = NetProps.GetPropEntity(witch, "m_hEffectEntity");
-		//	if (effectEnt != null && effectEnt.GetClassname() == "entityflame")
-		//	{
-		//		//NetProps.SetPropEntity(effectEnt, "m_hOwnerEntity", client);
-		//		effectEnt.Kill();
-		//		
-		//		local newEffectEnt = SpawnEntityFromTable("entityflame", {
-		//			origin = effectEnt.GetOrigin()
-		//		});
-		//		NetProps.SetPropFloat(newEffectEnt, "m_flLifetime", NetProps.GetPropFloat(effectEnt, "m_flLifetime"));
-		//		NetProps.SetPropEntity(newEffectEnt, "m_hEntAttached", witch);
-		//		NetProps.SetPropInt(newEffectEnt, "m_iDangerSound", NetProps.GetPropInt(effectEnt, "m_iDangerSound"));
-		//		NetProps.SetPropEntity(witch, "m_hEffectEntity", newEffectEnt);
-		//	}
+			if (!hasTarget || witchScope.VSSMTarget != client)
+			{
+				witchScope.VSSMTarget <- client;
+				
+				DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc1(self, activator)", 0, client, witch);
+				DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc2(self, activator)", 0.01, client, witch);
+			//	local effectEnt = NetProps.GetPropEntity(witch, "m_hEffectEntity");
+			//	if (effectEnt != null && effectEnt.GetClassname() == "entityflame")
+			//	{
+			//		//NetProps.SetPropEntity(effectEnt, "m_hOwnerEntity", client);
+			//		effectEnt.Kill();
+			//		
+			//		local newEffectEnt = SpawnEntityFromTable("entityflame", {
+			//			origin = effectEnt.GetOrigin()
+			//		});
+			//		NetProps.SetPropFloat(newEffectEnt, "m_flLifetime", NetProps.GetPropFloat(effectEnt, "m_flLifetime"));
+			//		NetProps.SetPropEntity(newEffectEnt, "m_hEntAttached", witch);
+			//		NetProps.SetPropInt(newEffectEnt, "m_iDangerSound", NetProps.GetPropInt(effectEnt, "m_iDangerSound"));
+			//		NetProps.SetPropEntity(witch, "m_hEffectEntity", newEffectEnt);
+			//	}
+			}
 		}
-	}*/
+	}
 	
-	/*function OnGameEvent_witch_harasser_set( params )
+	function OnGameEvent_witch_harasser_set( params )
 	{
 		if ( !("userid" in params) || !("witchid" in params) ) return;
 		
@@ -1553,97 +1589,49 @@ survManager <-
 		local witch = EntIndexToHScript( params["witchid"] );
 		if ( witch == null || !witch.IsValid() ) return;
 		
-		//local char = NetProps.GetPropInt(client, "m_survivorCharacter");
-		//if (client == GetPlayerFromCharacter(char)) return;
-		//printl("Clone survivor "+client+" harassed the witch")
-		
-	//	local oldTeam = NetProps.GetPropInt(client, "m_iTeamNum");
-	//	NetProps.SetPropInt(client, "m_iTeamNum", 3);
-	//	NetProps.SetPropFloat(witch, "m_rage", 1);
-	//	CommandABot({
-	//		bot = witch,
-	//		cmd = DirectorScript.BOT_CMD_ATTACK,
-	//		target = client,
-	//	});
-	//	NetProps.SetPropInt(client, "m_iTeamNum", oldTeam);
-		
-	//	local function SetWitchFocus(target)
-	//	{
-	//		local survList = survManager.RetrieveSurvList();
-	//		local tempChars = [];
-	//		
-	//		foreach (key, loopClient in survList)
-	//		{
-	//			tempChars.append(NetProps.GetPropInt(loopClient, "m_survivorCharacter"));
-	//			if (target != loopClient) NetProps.SetPropInt(loopClient, "m_survivorCharacter", 8);
-	//		}
-	//		//local newWitch = SpawnEntityFromTable("witch", {
-	//		//	origin = witch.GetOrigin().ToKVString(),
-	//		//	angles = witch.GetAngles().ToKVString(),
-	//		//	targetname = "ignoreMe"
-	//		//})
-	//		//witch.Kill();
-	//		//newWitch.TakeDamage(0,0,target);
-	//		//NetProps.SetPropFloat(witch, "m_rage", 0);
-	//		//witch.TakeDamage(0,0,target);
-	//		//witch.TakeDamage(0,DirectorScript.DMG_BURN,target)
-	//		//local fire = NetProps.GetPropEntity(witch, "m_hEffectEntity");
-	//		//if (fire != null) fire.Kill();
-	//		foreach (key, loopClient in survList)
-	//		{
-	//			if (target == loopClient) continue;
-	//			NetProps.SetPropInt(loopClient, "m_survivorCharacter", tempChars[key]);
-	//		}
-	//		tempChars.clear();
-	//	}
-	//	
-	//	printl("Entity "+client+" harassed witch "+witch)
-		
-		//printl("witch m_viewtarget: "+NetProps.GetPropVector(witch, "m_viewtarget"))
-		
-		// temp stuff
-		//local targ = Director.GetClosestSurvivor(witch.GetOrigin(), false, true);
-		//if (targ != null)
-		//{
-		//	SetWitchFocus(targ);
-		//}
-		
-		// If no damage was inflicted, get the look target
-	//	local lookTarg = NetProps.GetPropEntity(witch, "m_clientLookatTarget");
-	//	printl("lookTarg: "+lookTarg)
-	//	if (lookTarg != null && lookTarg != client && lookTarg != GetPlayerFromCharacter(NetProps.GetPropInt(client, "m_survivorCharacter")))
-	//	{
-	//		//SetWitchFocus(lookTarg);
-	//		//local oldTeam = NetProps.GetPropInt(lookTarg, "m_iTeamNum");
-	//		//NetProps.SetPropInt(lookTarg, "m_iTeamNum", 3);
-	//		//NetProps.SetPropFloat(witch, "m_rage", 0);
-	//		// Immediate crash if the witch AI is reset here
-	//		//CommandABot({
-	//		//	bot = witch,
-	//		//	cmd = DirectorScript.BOT_CMD_RESET,
-	//		//});
-	//		DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc1(self, activator)", 0, lookTarg, witch);
-	//		DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc2(self, activator)", 0.01, lookTarg, witch);
-	//		
-	//		if (witch.ValidateScriptScope())
-	//		{
-	//			local witchScope = witch.GetScriptScope();
-	//			if (!("VSSMTarget" in witchScope) || witchScope.VSSMTarget == null ||
-	//			!witchScope.VSSMTarget.IsValid() || witchScope.VSSMTarget != client)
-	//			{
-	//				witchScope.VSSMTarget <- client;
-	//			}
-	//		}
-	//		//NetProps.SetPropFloat(witch, "m_rage", 1);
-	//		//CommandABot({
-	//		//	bot = witch,
-	//		//	cmd = DirectorScript.BOT_CMD_ATTACK,
-	//		//	target = lookTarg,
-	//		//});
-	//		//NetProps.SetPropInt(lookTarg, "m_iTeamNum", oldTeam);
-	//	}
-	}*/
-	/*function WitchAttackFunc1(self, activator)
+		local witchScope = witch.GetScriptScope();
+		// (1 << 28) DMG_DIRECT according to SM, entityflame does this so ignore
+		if (witchScope != null && (!("VSSMTarget" in witchScope) || witchScope.VSSMTarget == null || !witchScope.VSSMTarget.IsValid()))
+		{
+			// If no damage was inflicted, get the look target
+			local lookTarg = NetProps.GetPropEntity(witch, "m_clientLookatTarget");
+			if (lookTarg != null && lookTarg != client && lookTarg != GetPlayerFromCharacter(NetProps.GetPropInt(client, "m_survivorCharacter")))
+			{
+				if (witchScope == null)
+				{
+					if (!witch.ValidateScriptScope()) return;
+					witchScope = witch.GetScriptScope();
+				}
+				
+				// Immediate crash if the witch AI is reset here
+				//CommandABot({
+				//	bot = witch,
+				//	cmd = DirectorScript.BOT_CMD_RESET,
+				//});
+				DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc1(self, activator)", 0, lookTarg, witch);
+				DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc2(self, activator)", 0.01, lookTarg, witch);
+				
+				witchScope.VSSMTarget <- lookTarg;
+				//NetProps.SetPropFloat(witch, "m_rage", 1);
+				//CommandABot({
+				//	bot = witch,
+				//	cmd = DirectorScript.BOT_CMD_ATTACK,
+				//	target = lookTarg,
+				//});
+				//NetProps.SetPropInt(lookTarg, "m_iTeamNum", oldTeam);
+			}
+			else
+			{
+				if (witchScope == null)
+				{
+					if (!witch.ValidateScriptScope()) return;
+					witchScope = witch.GetScriptScope();
+				}
+				witchScope.VSSMTarget <- client;
+			}
+		}
+	}
+	function WitchAttackFunc1(self, activator)
 	{
 		if (activator == null) return;
 		
@@ -1665,11 +1653,6 @@ survManager <-
 			target = activator,
 		});
 		NetProps.SetPropInt(activator, "m_iTeamNum", oldTeam);
-	}*/
-	
-	/*function OnGameEvent_upgrade_item_already_used( params )
-	{
-		g_ModeScript.DeepPrintTable(params)
 	}*/
 	
 	// --=EVENT=-- Fix Upgrade Pack
@@ -2683,7 +2666,7 @@ survManager <-
 							selSlot = selectedSlots[arrLoc];
 							foreach (key, val in selectedSlots)
 							{
-								if (val == 0 || val < arrLoc) continue;
+								if (val == 0) continue;
 								// decrement every succeeding slot value by 1
 								selectedSlots[key] -= 1;
 							}
@@ -3393,8 +3376,8 @@ survManager <-
 				}
 				break;
 			case 4:
-				SurvListFunc(params["userid"], false);
 			case 2:
+				SurvListFunc(params["userid"], false);
 				if (!isDisconnect && client.ValidateScriptScope())
 				{
 					clScope = client.GetScriptScope();
@@ -3411,8 +3394,8 @@ survManager <-
 			switch (params.team)
 			{
 			case 4:
-				SurvListFunc(params["userid"], true);
 			case 2:
+				SurvListFunc(params["userid"], true);
 				if (client.ValidateScriptScope())
 				{
 					if (clScope == null) clScope = client.GetScriptScope();
@@ -3529,6 +3512,14 @@ survManager <-
 		{worldScope.VSSMResetChar <- ResetChar.weakref();}
 		DoEntFire("!self", "CallScriptFunction", "VSSMResetChar", 0, client, worldSpawn);
 		//survManager.SetCharacter(client, NetProps.GetPropInt(client, "m_survivorCharacter"), 0);
+	}
+	
+	function OnGameEvent_player_activate( params )
+	{
+		local client = GetPlayerFromUserID( params["userid"] );
+		if ( client == null || !client.IsSurvivor() ) return;
+		//printl("Added "+client.GetPlayerName()+" "+client+" to survList");
+		SurvListFunc(params["userid"], true);
 	}
 	
 	// put the VSSMAllowRoundStart-less first map load code here
@@ -4776,7 +4767,9 @@ survManager <-
 			}
 			/*if (g_vecSummon == null)
 			{
-				
+				local plyStart = Entities.FindByClassname( survPos, "info_player_start" );
+				if (plyStart != null)
+					g_vecSummon = plyStart.GetOrigin();
 			}*/
 		}
 		
@@ -5768,9 +5761,9 @@ if (!FileToString(info_path))
 	Delete this file and load a map with updated mod version to regenerate new info for updated settings.\n
 	\n
 	Chat Commands (use with / or !):\n
-	\t!survbot <number, leave empty for 1> <forced character, use first letter like z for zoey> <number of forced characters, optional and defaults to number of added bots> - Manually add survivor bots.\n
+	\t!survcount <number> - Set the survCount setting and refresh it in-game. This will spawn in the appropriate amount of survivor bots, handles the auto-management of number of survivors and saves permanently across all games in it's settings file.\n
 	\t!survkick - Remove a bot in your crosshair, or nearest to it.\n
-	\t!survcount <number> - Set the survCount setting and refresh it in-game.\n
+	\t!survbot <number, leave empty for 1> <forced character, use first letter like z for zoey> <number of forced characters, optional and defaults to number of added bots> - Manually add survivor bots.\n
 	\t!survorder <character list> - Change the survivor order the Auto-Manager spawns bots in. Leave empty to reset to default survivor order.\n
 	\tExample: !survorder b z e f n c l r z l\n
 	\t!survswap - Takeover control to your crosshair's nearest survivor bot. Will not work if you or the bot are pinned, downed, or dead.\n
@@ -5821,7 +5814,7 @@ if (!FileToString(info_path))
 	- allowSurvSwapCmdForUsers (Allow swap control over bot survivors for everyone instead of just admins.\n
 	Does not use sb_takecontrol, uses a very hacky method to do so, can cause bugs with other scripts and plugins.)");*/
 	
-	StringToFile(info_path,"THIS IS ONLY AN INFO FILE IN CASE YOU DON'T KNOW WHAT THE SETTINGS DO.\nDon't edit this to change the settings.\nDelete this file and load a map with updated mod version to regenerate new info for updated settings.\n\nChat Commands (use with / or !):\n\t!survbot <number, leave empty for 1> <forced character, use first letter like z for zoey> <number of forced characters, optional and defaults to number of added bots> - Manually add survivor bots.\n\t!survkick - Remove a bot in your crosshair, or nearest to it.\n\t!survcount <number> - Set the survCount setting and refresh it in-game.\n\t!survorder <character list> - Change the survivor order the Auto-Manager spawns bots in. Leave empty to reset to default survivor order.\n\tExample: !survorder b z e f n c l r z l\n\t!survswap - Takeover control to your crosshair's nearest survivor bot. Will not work if you or the bot are pinned, downed, or dead.\n\t!survfix - Re-enables the Auto-Manager if you screw up the bot count.\n\tRemember folks, don't be a funnyman and type in 69 or 4001 or some other big number. It gets you nowhere.\n\n- survCount (Survivor count the mod aims for when auto-checking when a new player joins or map changes, etc.\nThe max amount that is mostly safe is 8, going beyond it can block special infected from spawning.\nThe game has a max limit of 18 survivors, trying to spawn more survivors will fail)\n\n- removeExcessSurvivors (Remove survivor bots over the limit.)\n\n- survStartWeapons (List of weapons to give to newly-spawned survivors. Any weapon can be given, but primary weapons will have no reserve ammo.\nUse the give command as a reference of items that can be given. Everything must be lower-case. There is one exclusive key for this setting.\nTo keep weapons given to the survivors including mutations, eg. a pistol or katana, use \"base\" and add to this setting as if it were a weapon.)\n\n- survCharOrderL4D* (Survivor order to pick from. This order will loop back around if the entire order is already picked.\nsurvCharOrderL4D1 for maps that use playable L4D1 survivor set.\nsurvCharOrderL4D2 for maps that use playable L4D2 survivor set.)\n\n- fixUpgradePacks (Fixes upgrade packs for 5+ survivors. Side-effects:\nUpgrade packs will glow even if you already used them.\nSurvivor bots will gain 1 upgrade ammo by using it again due to bypassing VScript hooks.)\n\n- autoControlExtraBots (Auto-assigns any spectators to a survivor bot on join.\nMain use is for lobby. Untested as of 7/18/2023)\n\n- fixChargerHits (Fixes chargers unable to hit and toss same-character survivors like 3 Coaches acting as brick walls. Side-effects:\nThis is a fake effect, it is impossible to use the real effect with VScript as of 7/18/2023.\nAnimation does not work properly for clone survivors, they will spaz out and always loop first animation frames.\nLikely server-intensive, runs on a situational think hook.)\n\n- fixDefibrillator (Fixes defibrillators reviving the wrong survivors. Side-effects:\nUses text chat to tell players who defibbed who.\nPlugins won't respond properly to this hacky fix defib by VScript.\nL4D2 survivors don't defib at all on L4D1 survivor set if corresponding proper L4D1 survivor is not in game.\n{Example: If you don't have Louis, you can't defib Coach. If you don't have Bill, you can't defib Nick.}\nLikely server-intensive, DefibCheck function pops up in console being 2 miliseconds long.)\n\n- fixFriendlyFireLines (Fixes friendly fire lines not playing on the extra survivors.\nHowever, the Don't shoot teammates! instruction will not appear.)\n\n- autoCheckpointFirstAid (Automatically alter the first aid kits to fit the number of survCount in checkpoints to next maps.\nDoesn't affect starting saferoom.)\n\n- restoreExtraSurvsItemsOnTransition (Let the mod store and restore the inventories of the 5th survivor and more.\nBy default, these extra survivors' inventories get wiped.)\n\n- allowSurvSwapCmdForUsers (Allow swap control over bot survivors for everyone instead of just admins.\nDoes not use sb_takecontrol, uses a very hacky method to do so, can cause bugs with other scripts and plugins.)");
+	StringToFile(info_path,"THIS IS ONLY AN INFO FILE IN CASE YOU DON'T KNOW WHAT THE SETTINGS DO.\nDon't edit this to change the settings.\nDelete this file and load a map with updated mod version to regenerate new info for updated settings.\n\nChat Commands (use with / or !):\n\t!survcount <number> - Set the survCount setting and refresh it in-game. This will spawn in the appropriate amount of survivor bots, handles the auto-management of number of survivors and saves permanently across all games in it's settings file.\n\t!survkick - Remove a bot in your crosshair, or nearest to it.\n\t!survbot <number, leave empty for 1> <forced character, use first letter like z for zoey> <number of forced characters, optional and defaults to number of added bots> - Manually add survivor bots.\n\t!survorder <character list> - Change the survivor order the Auto-Manager spawns bots in. Leave empty to reset to default survivor order.\n\tExample: !survorder b z e f n c l r z l\n\t!survswap - Takeover control to your crosshair's nearest survivor bot. Will not work if you or the bot are pinned, downed, or dead.\n\t!survfix - Re-enables the Auto-Manager if you screw up the bot count.\n\tRemember folks, don't be a funnyman and type in 69 or 4001 or some other big number. It gets you nowhere.\n\n- survCount (Survivor count the mod aims for when auto-checking when a new player joins or map changes, etc.\nThe max amount that is mostly safe is 8, going beyond it can block special infected from spawning.\nThe game has a max limit of 18 survivors, trying to spawn more survivors will fail)\n\n- removeExcessSurvivors (Remove survivor bots over the limit.)\n\n- survStartWeapons (List of weapons to give to newly-spawned survivors. Any weapon can be given, but primary weapons will have no reserve ammo.\nUse the give command as a reference of items that can be given. Everything must be lower-case. There is one exclusive key for this setting.\nTo keep weapons given to the survivors including mutations, eg. a pistol or katana, use \"base\" and add to this setting as if it were a weapon.)\n\n- survCharOrderL4D* (Survivor order to pick from. This order will loop back around if the entire order is already picked.\nsurvCharOrderL4D1 for maps that use playable L4D1 survivor set.\nsurvCharOrderL4D2 for maps that use playable L4D2 survivor set.)\n\n- fixUpgradePacks (Fixes upgrade packs for 5+ survivors. Side-effects:\nUpgrade packs will glow even if you already used them.\nSurvivor bots will gain 1 upgrade ammo by using it again due to bypassing VScript hooks.)\n\n- autoControlExtraBots (Auto-assigns any spectators to a survivor bot on join.\nMain use is for lobby. Untested as of 7/18/2023)\n\n- fixChargerHits (Fixes chargers unable to hit and toss same-character survivors like 3 Coaches acting as brick walls. Side-effects:\nThis is a fake effect, it is impossible to use the real effect with VScript as of 7/18/2023.\nAnimation does not work properly for clone survivors, they will spaz out and always loop first animation frames.\nLikely server-intensive, runs on a situational think hook.)\n\n- fixDefibrillator (Fixes defibrillators reviving the wrong survivors. Side-effects:\nUses text chat to tell players who defibbed who.\nPlugins won't respond properly to this hacky fix defib by VScript.\nL4D2 survivors don't defib at all on L4D1 survivor set if corresponding proper L4D1 survivor is not in game.\n{Example: If you don't have Louis, you can't defib Coach. If you don't have Bill, you can't defib Nick.}\nLikely server-intensive, DefibCheck function pops up in console being 2 miliseconds long.)\n\n- fixFriendlyFireLines (Fixes friendly fire lines not playing on the extra survivors.\nHowever, the Don't shoot teammates! instruction will not appear.)\n\n- autoCheckpointFirstAid (Automatically alter the first aid kits to fit the number of survCount in checkpoints to next maps.\nDoesn't affect starting saferoom.)\n\n- restoreExtraSurvsItemsOnTransition (Let the mod store and restore the inventories of the 5th survivor and more.\nBy default, these extra survivors' inventories get wiped.)\n\n- allowSurvSwapCmdForUsers (Allow swap control over bot survivors for everyone instead of just admins.\nDoes not use sb_takecontrol, uses a very hacky method to do so, can cause bugs with other scripts and plugins.)");
 }
 
 SpawnEntityFromTable("logic_relay", {

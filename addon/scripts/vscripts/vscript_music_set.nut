@@ -1,45 +1,10 @@
 local survSet = Director.GetSurvivorSet();
 
-if (!("musicSet" in this) || ("hasRoundEnded" in musicSet))
+if (!("musicControl" in this))
 {
 
-musicSet <-
+musicControl <-
 {
-	bleedingOutArr = [],
-	function DoReplace(oldPlyId, newPlyId)
-	{
-		local arrFind = bleedingOutArr.find(oldPlyId);
-		if (arrFind != null)
-			bleedingOutArr[arrFind] = newPlyId;
-	}
-	function OnGameEvent_player_bot_replace(params)
-	{
-		if (!("player" in params) || !("bot" in params)) return;
-		DoReplace(params["player"], params["bot"]);
-	}
-	function OnGameEvent_bot_player_replace(params)
-	{
-		if (!("player" in params) || !("bot" in params)) return;
-		DoReplace(params["bot"], params["player"]);
-	}
-	
-	function GetSurvList()
-	{
-		local survList = null;
-		if ("survManager" in getroottable())
-			survList = ::survManager.RetrieveSurvList(false);
-		else
-		{
-			survList = [];
-			for (local client; client = Entities.FindByClassname( client, "player" );)
-			{
-				if (!client.IsSurvivor()) continue;
-				survList.append(client);
-			}
-		}
-		return survList;
-	}
-	
 	function EnsureMusicEnt()
 	{
 		if (!("Entity" in this) || this.Entity == null || !this.Entity.IsValid())
@@ -162,10 +127,56 @@ musicSet <-
 		DoEntFire("!self", (boolean) ? "PlaySound" : "StopSound", "", 0, null, this.Entity);
 		DoEntFire("!self", "CallScriptFunction", "MessageAfter", 0, null, this.Entity);
 	}
+}
+
+}
+
+if (!("musicSet" in this) || ("hasRoundEnded" in musicSet))
+{
+
+musicSet <-
+{
+	bleedingOutArr = [],
+	function DoReplace(oldPlyId, newPlyId)
+	{
+		local arrFind = bleedingOutArr.find(oldPlyId);
+		if (arrFind != null)
+			bleedingOutArr[arrFind] = newPlyId;
+	}
+	function OnGameEvent_player_bot_replace(params)
+	{
+		if ("Disabled" in this) return;
+		if (!("player" in params) || !("bot" in params)) return;
+		DoReplace(params["player"], params["bot"]);
+	}
+	function OnGameEvent_bot_player_replace(params)
+	{
+		if ("Disabled" in this) return;
+		if (!("player" in params) || !("bot" in params)) return;
+		DoReplace(params["bot"], params["player"]);
+	}
+	
+	function GetSurvList()
+	{
+		local survList = null;
+		if ("survManager" in getroottable())
+			survList = ::survManager.RetrieveSurvList(false);
+		else
+		{
+			survList = [];
+			for (local client; client = Entities.FindByClassname( client, "player" );)
+			{
+				if (!client.IsSurvivor()) continue;
+				survList.append(client);
+			}
+		}
+		return survList;
+	}
 	
 	// Both ScenarioLose events can't be stopped with ambient_music sadly
 	/*function OnGameEvent_mission_lost( params )
 	{
+		if ("Disabled" in this) return;
 		local survList = GetSurvList();
 		if (survList == null) return;
 		
@@ -186,18 +197,19 @@ musicSet <-
 		switch (survSet)
 		{
 		case 1:
-			//ToggleMusic("Event.ScenarioLose_L4D1", survList, null, false);
-			ToggleMusic("Event.ScenarioLose", survList);
+			//this.musicControl.ToggleMusic("Event.ScenarioLose_L4D1", survList, null, false);
+			this.musicControl.ToggleMusic("Event.ScenarioLose", survList);
 			break;
 		default:
-			//ToggleMusic("Event.ScenarioLose", survList, null, false);
-			ToggleMusic("Event.ScenarioLose_L4D1", survList);
+			//this.musicControl.ToggleMusic("Event.ScenarioLose", survList, null, false);
+			this.musicControl.ToggleMusic("Event.ScenarioLose_L4D1", survList);
 			break;
 		}
 	}*/
 	
 	function OnGameEvent_player_spawn( params )
 	{
+		if ("Disabled" in this) return;
 		if ( !("userid" in params) ) return;
 		
 		local client = GetPlayerFromUserID( params["userid"] );
@@ -210,10 +222,10 @@ musicSet <-
 			switch (survSet)
 			{
 			case 1:
-				ToggleMusic("Event.SurvivorDeath", client, null, false);
+				this.musicControl.ToggleMusic("Event.SurvivorDeath", client, null, false);
 				break;
 			default:
-				ToggleMusic("Event.SurvivorDeath_L4D1", client, null, false);
+				this.musicControl.ToggleMusic("Event.SurvivorDeath_L4D1", client, null, false);
 				break;
 			}
 			local arrFind = this.bleedingOutArr.find(params["userid"]);
@@ -225,6 +237,7 @@ musicSet <-
 	
 	function OnGameEvent_player_death( params )
 	{
+		if ("Disabled" in this) return;
 		if ( !("userid" in params) ) return;
 		
 		local client = GetPlayerFromUserID( params["userid"] );
@@ -237,10 +250,10 @@ musicSet <-
 			switch (survSet)
 			{
 			case 1:
-				ToggleMusic("Event.SurvivorDeath", client, null);
+				this.musicControl.ToggleMusic("Event.SurvivorDeath", client, null);
 				break;
 			default:
-				ToggleMusic("Event.SurvivorDeath_L4D1", client, null);
+				this.musicControl.ToggleMusic("Event.SurvivorDeath_L4D1", client, null);
 				break;
 			}
 			
@@ -254,12 +267,12 @@ musicSet <-
 			switch (survSet)
 			{
 			case 1:
-				ToggleMusic("Event.SurvivorDeathHit_L4D1", survList, null, false);
-				ToggleMusic("Event.SurvivorDeathHit", survList, clOrigin);
+				this.musicControl.ToggleMusic("Event.SurvivorDeathHit_L4D1", survList, null, false);
+				this.musicControl.ToggleMusic("Event.SurvivorDeathHit", survList, clOrigin);
 				break;
 			default:
-				ToggleMusic("Event.SurvivorDeathHit", survList, null, false);
-				ToggleMusic("Event.SurvivorDeathHit_L4D1", survList, clOrigin);
+				this.musicControl.ToggleMusic("Event.SurvivorDeathHit", survList, null, false);
+				this.musicControl.ToggleMusic("Event.SurvivorDeathHit_L4D1", survList, clOrigin);
 				break;
 			}
 			break;
@@ -268,6 +281,7 @@ musicSet <-
 	
 	function OnGameEvent_player_incapacitated( params )
 	{
+		if ("Disabled" in this) return;
 		if ( !("userid" in params) ) return;
 		
 		local client = GetPlayerFromUserID( params["userid"] );
@@ -280,10 +294,10 @@ musicSet <-
 			switch (survSet)
 			{
 			case 1:
-				ToggleMusic("Event.Down", client, null);
+				this.musicControl.ToggleMusic("Event.Down", client, null);
 				break;
 			default:
-				ToggleMusic("Event.Down_L4D1", client, null);
+				this.musicControl.ToggleMusic("Event.Down_L4D1", client, null);
 				break;
 			}
 			
@@ -297,12 +311,12 @@ musicSet <-
 			switch (survSet)
 			{
 			case 1:
-				ToggleMusic("Event.DownHit_L4D1", survList, null, false);
-				ToggleMusic("Event.DownHit", survList, clOrigin);
+				this.musicControl.ToggleMusic("Event.DownHit_L4D1", survList, null, false);
+				this.musicControl.ToggleMusic("Event.DownHit", survList, clOrigin);
 				break;
 			default:
-				ToggleMusic("Event.DownHit", survList, null, false);
-				ToggleMusic("Event.DownHit_L4D1", survList, clOrigin);
+				this.musicControl.ToggleMusic("Event.DownHit", survList, null, false);
+				this.musicControl.ToggleMusic("Event.DownHit_L4D1", survList, clOrigin);
 				break;
 			}
 			/*foreach (key, loopClient in survList)
@@ -311,12 +325,12 @@ musicSet <-
 				switch (survSet)
 				{
 				case 1:
-					ToggleMusic("Event.DownHit_L4D1", loopClient, null, false);
-					ToggleMusic("Event.DownHit", loopClient, clOrigin);
+					this.musicControl.ToggleMusic("Event.DownHit_L4D1", loopClient, null, false);
+					this.musicControl.ToggleMusic("Event.DownHit", loopClient, clOrigin);
 					break;
 				default:
-					ToggleMusic("Event.DownHit", loopClient, null, false);
-					ToggleMusic("Event.DownHit_L4D1", loopClient, clOrigin);
+					this.musicControl.ToggleMusic("Event.DownHit", loopClient, null, false);
+					this.musicControl.ToggleMusic("Event.DownHit_L4D1", loopClient, clOrigin);
 					break;
 				}
 				break;
@@ -327,6 +341,7 @@ musicSet <-
 	
 	function OnGameEvent_revive_success( params )
 	{
+		if ("Disabled" in this) return;
 		if ( !("subject" in params) ) return;
 		
 		local client = GetPlayerFromUserID( params["subject"] );
@@ -342,12 +357,12 @@ musicSet <-
 			switch (survSet)
 			{
 			case 1:
-				ToggleMusic("Event.Down", client, null, false);
-				ToggleMusic("Event.BleedingOut", client, null, false);
+				this.musicControl.ToggleMusic("Event.Down", client, null, false);
+				this.musicControl.ToggleMusic("Event.BleedingOut", client, null, false);
 				break;
 			default:
-				ToggleMusic("Event.Down_L4D1", client, null, false);
-				ToggleMusic("Event.BleedingOut_L4D1", client, null, false);
+				this.musicControl.ToggleMusic("Event.Down_L4D1", client, null, false);
+				this.musicControl.ToggleMusic("Event.BleedingOut_L4D1", client, null, false);
 				break;
 			}
 			local arrFind = this.bleedingOutArr.find(params["userid"]);
@@ -359,6 +374,7 @@ musicSet <-
 	
 	function OnGameEvent_player_hurt_concise( params )
 	{
+		if ("Disabled" in this) return;
 		if ( !("userid" in params) ) return;
 		if (this.bleedingOutArr.find(params["userid"]) != null) return;
 		
@@ -381,10 +397,10 @@ musicSet <-
 				switch (survSet)
 				{
 				case 1:
-					ToggleMusic("Event.BleedingOut", client, null);
+					this.musicControl.ToggleMusic("Event.BleedingOut", client, null);
 					break;
 				default:
-					ToggleMusic("Event.BleedingOut_L4D1", client, null);
+					this.musicControl.ToggleMusic("Event.BleedingOut_L4D1", client, null);
 					break;
 				}
 				
@@ -398,12 +414,12 @@ musicSet <-
 				switch (survSet)
 				{
 				case 1:
-					ToggleMusic("Event.BleedingOutHit_L4D1", survList, null, false);
-					ToggleMusic("Event.BleedingOutHit", survList, clOrigin);
+					this.musicControl.ToggleMusic("Event.BleedingOutHit_L4D1", survList, null, false);
+					this.musicControl.ToggleMusic("Event.BleedingOutHit", survList, clOrigin);
 					break;
 				default:
-					ToggleMusic("Event.BleedingOutHit", survList, null, false);
-					ToggleMusic("Event.BleedingOutHit_L4D1", survList, clOrigin);
+					this.musicControl.ToggleMusic("Event.BleedingOutHit", survList, null, false);
+					this.musicControl.ToggleMusic("Event.BleedingOutHit_L4D1", survList, clOrigin);
 					break;
 				}
 				
