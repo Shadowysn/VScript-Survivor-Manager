@@ -6,3 +6,19 @@ if (!IsModelPrecached("models/survivors/survivor_gambler.mdl")) PrecacheModel("m
 if (!IsModelPrecached("models/survivors/survivor_producer.mdl")) PrecacheModel("models/survivors/survivor_producer.mdl");
 if (!IsModelPrecached("models/survivors/survivor_coach.mdl")) PrecacheModel("models/survivors/survivor_coach.mdl");
 if (!IsModelPrecached("models/survivors/survivor_mechanic.mdl")) PrecacheModel("models/survivors/survivor_mechanic.mdl");
+
+SpawnEntityGroupFromTable({
+	[0] = {
+		logic_auto = {
+			spawnflags = (1 << 0),
+			globalstate = "mapTransitioned",
+			connections =
+			{
+				OnMapSpawn =
+				{
+					cmd1 = "worldspawnRunScriptCode::VSSMMapTrans <- null01"
+				}
+			}
+		}
+	}
+});

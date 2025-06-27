@@ -9,7 +9,7 @@ i see u boi
 
 // todo:
 /*
-- block and/or forward inputs from our team 2 survivors to team 4
+- block and/or forward inputs from our team 2 survivors to team 4 (fixed)
 - charger fix W.I.P. figure out how to recreate freezing takedown
 effects of trigger upon death also not tested (likely fixed)
 - defibrillator fix W.I.P. higher priority
@@ -169,9 +169,125 @@ teamCrashFix <-
 }
 }
 __CollectEventCallbacks(teamCrashFix, "OnGameEvent_", "GameEventCallbacks", RegisterScriptGameEventListener);
-/*
-kick bill;kick zoey;kick francis;kick louis
-*/
+
+local survAnimVersion = 1;
+if (!("survAnim" in this) || 
+(!("version" in survAnim) || survAnim.version < survAnimVersion))
+{
+survAnim <-
+{
+	version = survAnimVersion,
+	HackPos = null,
+	// animation forcing hack because (Re)SetSequence doesn't work on players
+	function ForceSequence(client, anim)
+	{
+		if (client.GetMoveParent() != null) return;
+		
+		local worldSpawn = Entities.First();
+		if (!worldSpawn.ValidateScriptScope()) return;
+		
+		local worldScope = worldSpawn.GetScriptScope();
+		if (!("VScrAlterFS1" in worldScope) || worldScope.VScrAlterFS1 == null)
+			worldScope.VScrAlterFS1 <- AlterFS1.weakref();
+		if (!("VScrAlterFS2" in worldScope) || worldScope.VScrAlterFS2 == null)
+			worldScope.VScrAlterFS2 <- AlterFS2.weakref();
+		if (!("VScrAlterFS1Var" in worldScope) || worldScope.VScrAlterFS1Var == null)
+			worldScope.VScrAlterFS1Var <- [];
+		if (!("VScrAlterFS2Var" in worldScope) || worldScope.VScrAlterFS2Var == null)
+			worldScope.VScrAlterFS2Var <- [];
+		
+		local clOrigin = client.GetOrigin();
+		local clAngles = client.EyeAngles();
+		
+		if (HackPos == null || !HackPos.IsValid())
+		{
+			HackPos = SpawnEntityFromTable("info_survivor_position", {
+				targetname = "VScrFSHack",
+			});
+			if (HackPos == null || !HackPos.IsValid()) return;
+		}
+		
+		worldScope.VScrAlterFS1Var.append([
+			clOrigin,
+			QAngle(clAngles.x, clAngles.y, 0),
+			anim,
+		]);
+		worldScope.VScrAlterFS2Var.append([
+			clOrigin,
+			clAngles,
+			client.GetVelocity(),
+		]);
+		
+		DoEntFire("!self", "CallScriptFunction", "VScrAlterFS1", 0, HackPos, worldSpawn);
+		DoEntFire("!self", "CallScriptFunction", "IFOverride1", 0, null, client);
+		DoEntFire("!self", "TeleportToSurvivorPosition", "VScrFSHack", 0, null, client);
+		DoEntFire("!self", "CallScriptFunction", "IFOverride0", 0, null, client);
+		DoEntFire("!self", "ClearParent", "", 0, null, client);
+		DoEntFire("!self", "CallScriptFunction", "VScrAlterFS2", 0, client, worldSpawn);
+	}
+	function AlterFS1()
+	{
+		if (!("VScrAlterFS1Var" in this)) return;
+		if (!(0 in this.VScrAlterFS1Var))
+		{
+			delete this.VScrAlterFS1Var;
+			return;
+		}
+		
+		if (activator != null)
+		{
+			for (local i = 0; i < this.VScrAlterFS1Var[0].len(); i++)
+			{
+				switch (i)
+				{
+				case 0:
+					activator.SetOrigin(this.VScrAlterFS1Var[0][i]);
+					break;
+				case 1:
+					activator.SetAngles(this.VScrAlterFS1Var[0][i]);
+					break;
+				case 2:
+					activator.__KeyValueFromString("SurvivorIntroSequence", this.VScrAlterFS1Var[0][i]);
+					break;
+				}
+			}
+		}
+		this.VScrAlterFS1Var.remove(0);
+	}
+	function AlterFS2()
+	{
+		if (!("VScrAlterFS2Var" in this)) return;
+		if (!(0 in this.VScrAlterFS2Var))
+		{
+			delete this.VScrAlterFS2Var;
+			return;
+		}
+		
+		if (activator != null)
+		{
+			for (local i = 0; i < this.VScrAlterFS2Var[0].len(); i++)
+			{
+				switch (i)
+				{
+				case 0:
+					activator.SetOrigin(this.VScrAlterFS2Var[0][i]);
+					break;
+				case 1:
+					activator.SnapEyeAngles(this.VScrAlterFS2Var[0][i]);
+					break;
+				case 2:
+					activator.SetVelocity(this.VScrAlterFS2Var[0][i]);
+					break;
+				}
+			}
+			NetProps.SetPropEntity(activator, "m_positionEntity", null);
+			NetProps.SetPropInt(activator, "m_fFlags", NetProps.GetPropInt(activator, "m_fFlags") &~ (1 << 5));
+			NetProps.SetPropInt(activator, "m_Local.m_iHideHUD", 0);
+		}
+		this.VScrAlterFS2Var.remove(0);
+	}
+}
+}
 
 local CMD_SPAWN_NAME = "survbot";
 local CMD_COUNT_NAME = "survcount";
@@ -192,8 +308,6 @@ local g_survCharacter = {};
 local g_iBots = 0;
 local g_iBotAttempts = 0;
 local MAX_SPAWN_ATTEMPTS = 6;
-
-//local entName_UpgrBoxThink = "vssm_upgr_";
 
 local g_vecSummon = null;
 
@@ -319,6 +433,28 @@ survManager <-
 		}
 	}*/
 	
+	// Stop the pistol drop spam caused by Manacat's mods
+	// https://steamcommunity.com/sharedfiles/filedetails/?id=213445426
+	function DropItemCheck(client, weaponClass)
+	{
+		if (weaponClass == "weapon_pistol" && 
+		!("repair1" in this) && 
+		"manacat_rng_item" in getroottable() && "OnGameEvent_weapon_drop" in ::manacat_rng_item)
+		{
+			printl("Replacing and breaking pistol skin handling for ::manacat_rng_item.OnGameEvent_weapon_drop function\nto avoid pistol drop spam from Manacat's rngitem script");
+			::manacat_rng_item.OnGameEvent_weapon_drop <- function(params)
+			{
+				if(!("item" in params))return;
+				local player = GetPlayerFromUserID(params.userid);
+				if(player == null || !player.IsValid())return;
+				::manacat_rng_item.chkThrows(player);
+				if(NetProps.GetPropInt(player,"m_iHealth") != 0 && NetProps.GetPropFloat(player,"m_healthBuffer") != 0)::manacat_rng_item.inv_save(params.userid);
+			}
+			this.repair1 <- null;
+		}
+		client.DropItem(weaponClass);
+	}
+	
 	function ReloadItems()
 	{
 		// extra survivors actually have saved items from default takeover system
@@ -361,7 +497,6 @@ survManager <-
 			
 			local userId = client.GetPlayerUserId();
 			local hasTransItems = (VSSMFirstCharSurvs.find(userId) == null) ? survManager.RestoreTransItems(client, origWeps, survSlot) : false;
-			local hasTransItems = survManager.RestoreTransItems(client, origWeps, survSlot);
 			if (!hasTransItems && VSSMNoSpawnStartItemsTbl.find(userId) == null)
 			{
 				survManager.GiveStartItems(client, origWeps);
@@ -1279,7 +1414,7 @@ survManager <-
 				val.Kill();
 				continue;
 			}
-			main.DropItem(valClass);
+			survManager.DropItemCheck(main, valClass);
 			DoEntFire("!self", "Use", "", 0, target, val);
 		}
 		foreach (key, val in targetInvTable)
@@ -1299,7 +1434,7 @@ survManager <-
 				val.Kill();
 				continue;
 			}
-			target.DropItem(valClass);
+			survManager.DropItemCheck(target, valClass);
 			DoEntFire("!self", "Use", "", 0, main, val);
 		}
 		
@@ -1672,7 +1807,7 @@ survManager <-
 		if (!("survIdList" in boxScope))
 		{
 			boxScope.survIdList <- [];
-			// downside to using GetSurvivorSlot is it seems the slot stays with
+			// downside to using user id is the id stays with
 			// you when you switch bots
 			// unfortunately given having to account for m_survivorCharacter clones
 			// and the fact l4d2's player system is dog doodoo this is the best for now
@@ -4372,11 +4507,11 @@ survManager <-
 							switch (this.ChargeState[i])
 							{
 							case 0:
-								survManager.ForceSequence(this.Charged[i], "ACT_TERROR_HIT_BY_CHARGER");
+								::survAnim.ForceSequence(this.Charged[i], "ACT_TERROR_HIT_BY_CHARGER");
 								this.ChargeState[i] = 1;
 								break;
 							case 2:
-								survManager.ForceSequence(this.Charged[i], "ACT_TERROR_CHARGERHIT_LAND_SLOW");
+								::survAnim.ForceSequence(this.Charged[i], "ACT_TERROR_CHARGERHIT_LAND_SLOW");
 								this.ChargeState[i] = 3;
 								if (this.ChargeTime[i] == null)
 								{
@@ -4396,89 +4531,16 @@ survManager <-
 							switch (this.ChargeState[i])
 							{
 							case 0:
-								survManager.ForceSequence(this.Charged[i], "ACT_TERROR_HIT_BY_CHARGER");
+								::survAnim.ForceSequence(this.Charged[i], "ACT_TERROR_HIT_BY_CHARGER");
 								this.ChargeState[i] = 1;
 								break;
 							case 1:
-								survManager.ForceSequence(this.Charged[i], "ACT_TERROR_IDLE_FALL_FROM_CHARGERHIT");
+								::survAnim.ForceSequence(this.Charged[i], "ACT_TERROR_IDLE_FALL_FROM_CHARGERHIT");
 								this.ChargeState[i] = 2;
 								break;
 							}
 							break;
 						}
-						
-						/*local mdlIdx = NetProps.GetPropInt(this.Charged[i], "m_nModelIndex");
-						if (!(mdlIdx in mdlSeqIdxs))
-						{PrecacheAnimIdxs(this.Charged[i], mdlIdx);}
-						//printl("m_flAnimTime: "+NetProps.GetPropInt(this.Charged[i], "m_flAnimTime"))
-						//printl("m_flPrevAnimTime: "+NetProps.GetPropFloat(this.Charged[i], "m_flPrevAnimTime"))
-						//printl("m_nNewSequenceParity: "+NetProps.GetPropInt(this.Charged[i], "m_nNewSequenceParity"))
-						if (mdlIdx in mdlSeqIdxs && mdlSeqIdxs[mdlIdx] != null)
-						{
-							local flags = NetProps.GetPropInt(this.Charged[i], "m_fFlags");
-							//this.ChargeAnimTime[i] = this.ChargeAnimTime[i] + 1;
-							//this.ChargeAnimTime[i] = RandomInt(0, 64);
-							//printl("Testshit: "+(NetProps.GetPropFloat(this.Charged[i], "m_nTickBase") - (time - NetProps.GetPropFloat(this.Charged[i], "m_flPrevAnimTime"))))
-							switch (!!(flags & (1 << 0))) // FL_ONGROUND
-							{
-							case true:
-								// 0 = initial charge, 1 = was in air
-								switch (this.ChargeState[i])
-								{
-								case 0:
-									NetProps.SetPropInt(this.Charged[i], "m_nSequence", mdlSeqIdxs[mdlIdx][2]);
-									//NetProps.SetPropInt(this.Charged[i], "m_flAnimTime", this.ChargeAnimTime[i]);
-									//NetProps.SetPropFloat(this.Charged[i], "m_flCycle", this.ChargeAnimTime[i]);m_nTickBase
-									//NetProps.SetPropInt(this.Charged[i], "m_flAnimTime", NetProps.GetPropFloat(this.Charged[i], "m_nTickBase") - (NetProps.GetPropFloat(this.Charged[i], "m_flPrevAnimTime") - time));
-									NetProps.SetPropFloat(this.Charged[i], "m_mainSequenceStartTime", time);
-									this.ChargeState[i] = 1; // temporary
-									break;
-								case 1:
-									NetProps.SetPropFloat(this.Charged[i], "m_mainSequenceStartTime", time);
-									this.ChargeState[i] = 2;
-									//this.ChargeAnimTime[i] = 0;
-								default:
-									NetProps.SetPropInt(this.Charged[i], "m_nSequence", mdlSeqIdxs[mdlIdx][0]);
-									//NetProps.SetPropInt(this.Charged[i], "m_flAnimTime", this.ChargeAnimTime[i]);
-									//NetProps.SetPropFloat(this.Charged[i], "m_flCycle", this.ChargeAnimTime[i]);
-									//NetProps.SetPropInt(this.Charged[i], "m_flAnimTime", NetProps.GetPropFloat(this.Charged[i], "m_nTickBase") - (NetProps.GetPropFloat(this.Charged[i], "m_flPrevAnimTime") - time));
-									if (this.ChargeTime[i] == null)
-									{
-										//this.ChargeAnimTime[i] = 0;
-										NetProps.SetPropFloat(this.Charged[i], "m_mainSequenceStartTime", time);
-										local stunTime = 3;
-										this.ChargeTime[i] = time + stunTime;
-										NetProps.SetPropFloat(this.Charged[i], "m_stunTimer.m_duration", stunTime);
-										local timeDur = time+stunTime;
-										NetProps.SetPropFloat(this.Charged[i], "m_stunTimer.m_timestamp", timeDur);
-										NetProps.SetPropFloat(this.Charged[i], "m_jumpSupressedUntil", timeDur);
-										NetProps.SetPropFloat(this.Charged[i], "m_TimeForceExternalView", timeDur);
-									}
-									break;
-								}
-								break;
-							default:
-								if (this.ChargeState[i] != 1)
-								{
-									NetProps.SetPropFloat(this.Charged[i], "m_mainSequenceStartTime", time);
-									this.ChargeState[i] = 1;
-									//this.ChargeAnimTime[i] = 0;
-								}
-								if (NetProps.GetPropInt(this.Charged[i], "terrorlocaldata.m_airMovementRestricted") != 1)
-								{
-									NetProps.SetPropInt(this.Charged[i], "terrorlocaldata.m_airMovementRestricted", 1);
-								}
-								
-								NetProps.SetPropInt(this.Charged[i], "m_nSequence", mdlSeqIdxs[mdlIdx][1]);
-								//NetProps.SetPropInt(this.Charged[i], "m_flAnimTime", this.ChargeAnimTime[i]);
-								//NetProps.SetPropFloat(this.Charged[i], "m_flCycle", this.ChargeAnimTime[i]);
-								//NetProps.SetPropInt(this.Charged[i], "m_flAnimTime", NetProps.GetPropFloat(this.Charged[i], "m_nTickBase") - (NetProps.GetPropFloat(this.Charged[i], "m_flPrevAnimTime") - time));
-								break;
-							}
-						}*/
-						
-						//printl("this.ChargeAnimTime[i]: "+this.ChargeAnimTime[i])
-						//printl("m_flSimulationTime: "+NetProps.GetPropInt(this.Charged[i], "m_flSimulationTime"))
 					}
 				}
 				
@@ -4519,7 +4581,6 @@ survManager <-
 					{
 						foreach (key, client in survList)
 						{
-							local clOrigin = client.GetOrigin();
 							foreach (key, extraSetPlayer in extraSetSurvs)
 							{
 								if (extraSetPlayer == client) continue;
@@ -4564,9 +4625,13 @@ survManager <-
 									}
 									continue;
 								}
-								local fakeOrigin = extraSetPlayer.GetOrigin();
+								// floods stringtable like crazy
+								// context isn't worth the eventual crash
+								//local clOrigin = client.GetOrigin();
+								//local fakeOrigin = extraSetPlayer.GetOrigin();
 								
-								local distVars = (clOrigin-fakeOrigin).Length();
+								//local distVars = (clOrigin-fakeOrigin).Length().tointeger() / 10;
+								//distVars *= 10;
 								switch (survManager.GetSurvSet())
 								{
 								case 1:
@@ -4574,19 +4639,19 @@ survManager <-
 									{
 									case 4:
 										client.SetContextNum("IsGamblerAlive", 1, 1);
-										client.SetContextNum("DistToGambler", distVars, 1);
+										//client.SetContextNum("DistToGambler", distVars, 1);
 										break;
 									case 5:
 										client.SetContextNum("IsProducerAlive", 1, 1);
-										client.SetContextNum("DistToProducer", distVars, 1);
+										//client.SetContextNum("DistToProducer", distVars, 1);
 										break;
 									case 6:
 										client.SetContextNum("IsMechanicAlive", 1, 1);
-										client.SetContextNum("DistToMechanic", distVars, 1);
+										//client.SetContextNum("DistToMechanic", distVars, 1);
 										break;
 									case 7:
 										client.SetContextNum("IsCoachAlive", 1, 1);
-										client.SetContextNum("DistToCoach", distVars, 1);
+										//client.SetContextNum("DistToCoach", distVars, 1);
 										break;
 									}
 									break;
@@ -4595,19 +4660,19 @@ survManager <-
 									{
 									case 4:
 										client.SetContextNum("IsNamVetAlive", 1, 1);
-										client.SetContextNum("DistToNamVet", distVars, 1);
+										//client.SetContextNum("DistToNamVet", distVars, 1);
 										break;
 									case 5:
 										client.SetContextNum("IsTeenGirlAlive", 1, 1);
-										client.SetContextNum("DistToTeenGirl", distVars, 1);
+										//client.SetContextNum("DistToTeenGirl", distVars, 1);
 										break;
 									case 6:
 										client.SetContextNum("IsBikerAlive", 1, 1);
-										client.SetContextNum("DistToBiker", distVars, 1);
+										//client.SetContextNum("DistToBiker", distVars, 1);
 										break;
 									case 7:
 										client.SetContextNum("IsManagerAlive", 1, 1);
-										client.SetContextNum("DistToManager", distVars, 1);
+										//client.SetContextNum("DistToManager", distVars, 1);
 										break;
 									}
 									break;
@@ -4966,71 +5031,6 @@ survManager <-
 		}
 	}
 	
-	// animation forcing hack because (Re)SetSequence doesn't work on players
-	function ForceSequence(client, anim)
-	{
-		local worldSpawn = Entities.First();
-		if (!worldSpawn.ValidateScriptScope()) return;
-		
-		local worldScope = worldSpawn.GetScriptScope();
-		if (!("VSSMAlterFS" in worldScope) || worldScope.VSSMAlterFS == null)
-			worldScope.VSSMAlterFS <- AlterFS1.weakref();
-		if (!("VSSMAlterFSVar" in worldScope) || worldScope.VSSMAlterFSVar == null)
-			worldScope.VSSMAlterFSVar <- [];
-		
-		local clOrigin = client.GetOrigin();
-		local clAngles = client.EyeAngles();
-		worldScope.VSSMAlterFSVar.append([
-			clOrigin,
-			clAngles,
-			client.GetVelocity(),
-		]);
-		
-		local hackPos = SpawnEntityFromTable("info_survivor_position", {
-			targetname = "VSSMFSHack",
-			SurvivorIntroSequence = anim,
-			origin = clOrigin.ToKVString(),
-			angles = QAngle(clAngles.x, clAngles.y, 0).ToKVString(),
-		});
-		DoEntFire("!self", "TeleportToSurvivorPosition", "VSSMFSHack", 0, null, client);
-		DoEntFire("!self", "ClearParent", "", 0, null, client);
-		DoEntFire("!self", "CallScriptFunction", "VSSMAlterFS", 0, client, worldSpawn);
-		DoEntFire("!self", "Kill", "", 0, null, hackPos);
-	}
-	function AlterFS1()
-	{
-		if (!("VSSMAlterFSVar" in this)) return;
-		if (!(0 in this.VSSMAlterFSVar))
-		{
-			delete this.VSSMAlterFSVar;
-			return;
-		}
-		
-		if (activator != null)
-		{
-			for (local i = 0; i < this.VSSMAlterFSVar[0].len(); i++)
-			{
-				switch (i)
-				{
-				case 0:
-					activator.SetOrigin(this.VSSMAlterFSVar[0][i]);
-					break;
-				case 1:
-					activator.SnapEyeAngles(this.VSSMAlterFSVar[0][i]);
-					break;
-				case 2:
-					activator.SetVelocity(this.VSSMAlterFSVar[0][i]);
-					break;
-				}
-			}
-			NetProps.SetPropEntity(activator, "m_positionEntity", null);
-			NetProps.SetPropInt(activator, "m_fFlags", NetProps.GetPropInt(activator, "m_fFlags") &~ (1 << 5));
-			NetProps.SetPropInt(activator, "m_Local.m_iHideHUD", 0);
-			//NetProps.SetPropEntity(activator, "m_hViewEntity", null);
-		}
-		this.VSSMAlterFSVar.remove(0);
-	}
-	
 	// --=EVENT=-- Map Transition Inventory Saving
 	function OnGameEvent_map_transition( params )
 	{
@@ -5041,6 +5041,19 @@ survManager <-
 		case "scavenge":
 			return;
 		}
+		if (!("VSSMMapTrans" in getroottable()))
+		{
+			SpawnEntityGroupFromTable({
+				[0] = {
+					env_global = {
+						spawnflags = (1 << 0),
+						initialstate = 1,
+						globalstate = "mapTransitioned"
+					}
+				}
+			});
+		}
+		
 		//local bottedIDs = [];
 		
 		// game apparently lowers case of healthbuffer to healthbuffer which 
@@ -5056,14 +5069,12 @@ survManager <-
 		foreach (key, client in survList)
 		{
 			if (NetProps.GetPropInt(client, "m_iTeamNum") != 2)
-			{
 				continue;
-			}
 			//if (NetProps.HasProp(client, "m_humanSpectatorUserID"))
 			//{bottedIDs.append(NetProps.GetPropInt(client, "m_humanSpectatorUserID"));}
 			
 			local survSlot = gameSurvSlots.find(client);
-			//if (survSlot == null || survSlot >= 0 && survSlot <= 3) continue;
+			if (survSlot == null) continue;
 			// first 4 slots are already handled by the game, ideally shouldn't save
 			// but there are edge cases with team 4 survivors that can block this
 			// gadzooks
@@ -5212,7 +5223,6 @@ survManager <-
 				spawnflags = 1,
 			});
 			if (transItemsEvent == null) return;
-			DoEntFire("!self", "Kill", "", 0.05, null, transItemsEvent);
 		}
 		if (wasDead != null)
 		{
@@ -5270,6 +5280,11 @@ survManager <-
 	{
 		if (!Settings.restoreExtraSurvsItemsOnTransition) return false;
 		if (VSSMTransItemsTbl == null) return false;
+		if (!("VSSMMapTrans" in getroottable()))
+		{
+			VSSMTransItemsTbl = null;
+			return false;
+		}
 		
 		if (VSSMTransItemsTbl.len() == 0)
 		{
@@ -5390,7 +5405,7 @@ survManager <-
 						{
 							NetProps.SetPropInt(val, "m_isDualWielding", 0);
 						}
-						client.DropItem(val.GetClassname());
+						survManager.DropItemCheck(client, val.GetClassname());
 						val.Kill();
 					}
 				}
@@ -5545,7 +5560,7 @@ survManager <-
 					{
 						NetProps.SetPropInt(val, "m_isDualWielding", 0);
 					}
-					client.DropItem(val.GetClassname());
+					survManager.DropItemCheck(client, val.GetClassname());
 					val.Kill();
 				}
 				// DropItem needs to be called because Kill doesn't remove
@@ -5645,6 +5660,7 @@ survManager <-
 			return;
 		}
 		
+		//local posTbl = {};
 		local posVar = 0;
 		for (local i = 1; i <= survCount; i++)
 		{
@@ -5668,6 +5684,14 @@ survManager <-
 				SpawnEntityFromTable("info_survivor_position", {
 					order = i,
 				});
+				// TODO
+				/*SpawnEntityGroupFromTable({
+					[0] = {
+						info_survivor_position = {
+							origin = basePos.GetOrigin().ToKVString(),
+						}
+					}
+				});*/
 			}
 		}
 	}
@@ -5734,14 +5758,6 @@ if (!("VSSM_rr_GetResponseTargets" in this) && survManager.GetSurvSet() == 1)
 		return responseTbl;
 	}
 }
-
-/*local worldSpawn = Entities.First();
-if (worldSpawn == null || !worldSpawn.ValidateScriptScope()) return;
-local worldScope = worldSpawn.GetScriptScope();
-if (!("VSSM_func1" in worldScope))
-{
-	
-}*/
 
 //if (errorMeleeIdx == null)
 //{
@@ -5817,19 +5833,47 @@ if (!FileToString(info_path))
 	StringToFile(info_path,"THIS IS ONLY AN INFO FILE IN CASE YOU DON'T KNOW WHAT THE SETTINGS DO.\nDon't edit this to change the settings.\nDelete this file and load a map with updated mod version to regenerate new info for updated settings.\n\nChat Commands (use with / or !):\n\t!survcount <number> - Set the survCount setting and refresh it in-game. This will spawn in the appropriate amount of survivor bots, handles the auto-management of number of survivors and saves permanently across all games in it's settings file.\n\t!survkick - Remove a bot in your crosshair, or nearest to it.\n\t!survbot <number, leave empty for 1> <forced character, use first letter like z for zoey> <number of forced characters, optional and defaults to number of added bots> - Manually add survivor bots.\n\t!survorder <character list> - Change the survivor order the Auto-Manager spawns bots in. Leave empty to reset to default survivor order.\n\tExample: !survorder b z e f n c l r z l\n\t!survswap - Takeover control to your crosshair's nearest survivor bot. Will not work if you or the bot are pinned, downed, or dead.\n\t!survfix - Re-enables the Auto-Manager if you screw up the bot count.\n\tRemember folks, don't be a funnyman and type in 69 or 4001 or some other big number. It gets you nowhere.\n\n- survCount (Survivor count the mod aims for when auto-checking when a new player joins or map changes, etc.\nThe max amount that is mostly safe is 8, going beyond it can block special infected from spawning.\nThe game has a max limit of 18 survivors, trying to spawn more survivors will fail)\n\n- removeExcessSurvivors (Remove survivor bots over the limit.)\n\n- survStartWeapons (List of weapons to give to newly-spawned survivors. Any weapon can be given, but primary weapons will have no reserve ammo.\nUse the give command as a reference of items that can be given. Everything must be lower-case. There is one exclusive key for this setting.\nTo keep weapons given to the survivors including mutations, eg. a pistol or katana, use \"base\" and add to this setting as if it were a weapon.)\n\n- survCharOrderL4D* (Survivor order to pick from. This order will loop back around if the entire order is already picked.\nsurvCharOrderL4D1 for maps that use playable L4D1 survivor set.\nsurvCharOrderL4D2 for maps that use playable L4D2 survivor set.)\n\n- fixUpgradePacks (Fixes upgrade packs for 5+ survivors. Side-effects:\nUpgrade packs will glow even if you already used them.\nSurvivor bots will gain 1 upgrade ammo by using it again due to bypassing VScript hooks.)\n\n- autoControlExtraBots (Auto-assigns any spectators to a survivor bot on join.\nMain use is for lobby. Untested as of 7/18/2023)\n\n- fixChargerHits (Fixes chargers unable to hit and toss same-character survivors like 3 Coaches acting as brick walls. Side-effects:\nThis is a fake effect, it is impossible to use the real effect with VScript as of 7/18/2023.\nAnimation does not work properly for clone survivors, they will spaz out and always loop first animation frames.\nLikely server-intensive, runs on a situational think hook.)\n\n- fixDefibrillator (Fixes defibrillators reviving the wrong survivors. Side-effects:\nUses text chat to tell players who defibbed who.\nPlugins won't respond properly to this hacky fix defib by VScript.\nL4D2 survivors don't defib at all on L4D1 survivor set if corresponding proper L4D1 survivor is not in game.\n{Example: If you don't have Louis, you can't defib Coach. If you don't have Bill, you can't defib Nick.}\nLikely server-intensive, DefibCheck function pops up in console being 2 miliseconds long.)\n\n- fixFriendlyFireLines (Fixes friendly fire lines not playing on the extra survivors.\nHowever, the Don't shoot teammates! instruction will not appear.)\n\n- autoCheckpointFirstAid (Automatically alter the first aid kits to fit the number of survCount in checkpoints to next maps.\nDoesn't affect starting saferoom.)\n\n- restoreExtraSurvsItemsOnTransition (Let the mod store and restore the inventories of the 5th survivor and more.\nBy default, these extra survivors' inventories get wiped.)\n\n- allowSurvSwapCmdForUsers (Allow swap control over bot survivors for everyone instead of just admins.\nDoes not use sb_takecontrol, uses a very hacky method to do so, can cause bugs with other scripts and plugins.)");
 }
 
-SpawnEntityFromTable("logic_relay", {
-	spawnflags = 1,
-	connections =
-	{
-		OnSpawn =
-		{
-			cmd1 = "worldspawnRunScriptCodesurvManager.OnMapSpawn()01"
+SpawnEntityGroupFromTable({
+	[0] = {
+		logic_relay = {
+			spawnflags = (1 << 0),
+			connections =
+			{
+				OnSpawn =
+				{
+					cmd1 = "worldspawnRunScriptCodesurvManager.OnMapSpawn()01"
+				}
+			}
 		}
-	}
+	},
 });
 }
 
 __CollectEventCallbacks(survManager, "OnGameEvent_", "GameEventCallbacks", RegisterScriptGameEventListener);
+
+if (!("g_MapName" in this)) g_MapName <- Director.GetMapName().tolower();
+// do this in here as map_support runs too late
+// it's ugly but it's the only thing that can be done
+switch (g_MapName)
+{
+case "glubtastic4_7":
+	local giverTrigger = Entities.FindByClassnameNearest("trigger_once", Vector(-860, -100, -960), 20);
+	if (giverTrigger != null)
+	{
+		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "louis", "SpawnSurvivor", "");
+		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "francis", "SpawnSurvivor", "");
+		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "!francis", "SetGlowEnabled", "false");
+		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "!louis", "SetGlowEnabled", "false");
+		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "!francis", "RunScriptFile", "giveshotgun");
+		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "!louis", "RunScriptFile", "giveshotgun");
+		
+		EntFire("francis", "SpawnSurvivor", "", 0.1);
+		EntFire("louis", "SpawnSurvivor", "", 0.1);
+		EntFire("!francis", "SetGlowEnabled", "0", 0.15);
+		EntFire("!louis", "SetGlowEnabled", "0", 0.15);
+	}
+	break;
+}
 
 // unused for now, not finished
 //IncludeScript( "vscript_music_set", getroottable() );
