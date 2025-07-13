@@ -22,7 +22,7 @@ and consequently break the shit out of the initial map spawn system
 see custom survivor bot in a custom coldy map (mostly fixed)
 */
 
-local TCFVersion = 1;
+local TCFVersion = 2;
 // teamCrashFix handles fixing team crashing by setting the bots to 
 // their proper team before removal from the team list by the game's hard code
 if (!("teamCrashFix" in this) || 
@@ -98,8 +98,7 @@ teamCrashFix <-
 			if (wasAlive)
 			{
 				isFalling = (NetProps.GetPropInt(client, "m_isFallingFromLedge") != 0);
-				if (curTeam == 4)
-					NetProps.SetPropInt(client, "m_iTeamNum", 2);
+				NetProps.SetPropInt(client, "m_iTeamNum", 1);
 				
 				local worldSpawn = Entities.First();
 				NetProps.SetPropInt(client, "m_takedamage", 2);
@@ -111,72 +110,25 @@ teamCrashFix <-
 				// In that case use different damage
 				if (NetProps.GetPropInt(client, "m_lifeState") == 0)
 				{
-					NetProps.SetPropInt(client, "m_isIncapacitated", 1);
 					client.TakeDamageEx(worldSpawn, worldSpawn, worldSpawn, Vector(), Vector(), client.GetHealth() * 10, (1 << 0)); // DMG_GENERIC
 				}
 			}
 			
 			NetProps.SetPropInt(client, "m_iTeamNum", initialTeam);
-			
-			if (wasAlive && !NetProps.GetPropInt(client, "m_lifeState") != 0 && !isFalling)
-			{
-				switch (curTeam)
-				{
-				case 2:
-				case 4:
-					local clOrigin = client.GetOrigin();
-					local distance = null;
-					local chosenBody = null;
-					for (local body; body = Entities.FindByClassname( body, "survivor_death_model" );)
-					{
-						if (body == null || NetProps.GetPropInt(body, "m_iEFlags") & (1 << 0)) continue; // EFL_KILLME
-						
-						local distVars = (clOrigin-body.GetOrigin()).LengthSqr();
-						if (distance == null || distVars < distance)
-						{
-							distance = distVars;
-							chosenBody = body;
-						}
-					}
-					if (chosenBody != null)
-						chosenBody.Kill();
-					break;
-				}
-			}
-			//Director.ClearCachedBotQueries(); // TODO for TCFVersion 2
 			//printl("m_iTeamNum set to "+initialTeam);
-			// thought maybe the weapons have something to do with the odd crash
-			// was not the case
-			// game sometimes crashes when multiple survivor bots get kicked and 
-			// readded, it's likely a problem with this crash fix although how it's
-			// happening i don't know
-			// and then it gets unpredictably less common the longer the session is
-			// for some reason
-		//	for (local i = 0; i < NetProps.GetPropArraySize(client, "m_hMyWeapons"); i++)
-		//	{
-		//		local wep = NetProps.GetPropEntityArray(client, "m_hMyWeapons", i);
-		//		if (wep == null) continue;
-		//		printl("wep: "+wep+" team: "+NetProps.GetPropInt(wep, "m_iTeamNum"));
-		//		//wep.Kill();
-		//		if (NetProps.GetPropInt(wep, "m_iTeamNum") != initialTeam)
-		//		{
-		//			printl("Found a weapon that didn't have matching team for "+client+"!: "+wep);
-		//			NetProps.SetPropInt(wep, "m_iTeamNum", initialTeam);
-		//		}
-		//	}
 		}
 	}
 }
 }
 __CollectEventCallbacks(teamCrashFix, "OnGameEvent_", "GameEventCallbacks", RegisterScriptGameEventListener);
 
-local survAnimVersion = 1;
-if (!("survAnim" in this) || 
-(!("version" in survAnim) || survAnim.version < survAnimVersion))
+local playerAnimVersion = 1;
+if (!("playerAnim" in this) || 
+(!("version" in playerAnim) || playerAnim.version < playerAnimVersion))
 {
-survAnim <-
+playerAnim <-
 {
-	version = survAnimVersion,
+	version = playerAnimVersion,
 	HackPos = null,
 	// animation forcing hack because (Re)SetSequence doesn't work on players
 	function ForceSequence(client, anim)
@@ -415,9 +367,28 @@ survManager <-
 	// table of changelevel entity indexes containing an array of first aid kit spawns
 	changeLevelsItems = {},
 	
-	/*function WarnIncompat()
+	function WarnIncompat()
 	{
-		switch (baseMode)
+		if ("L4D1Data" in getroottable())
+		{
+			local warned = {};
+			RestoreTable("VSSMWarned", warned);
+			if (!("a" in warned))
+			{
+				if (!isDedicated)
+				{
+					ClientPrint(GetListenServerHost(), 3, "\x03"+"[VSSM]"+"\x04"+"\nWARNING:"+"\x01"+"\nUnited We Stand/Spawn L4D1 Survivors is redundant and not properly supported alongside this mod.");
+				}
+				else
+				{
+					printl("[VSSM]\nWARNING:\nUnited We Stand/Spawn L4D1 Survivors is redundant and not properly supported alongside this mod.");
+				}
+				SaveTable("VSSMWarned", {a = null});
+			}
+			else
+				SaveTable("VSSMWarned", warned);
+		}
+		/*switch (baseMode)
 		{
 		case "versus":
 		case "scavenge":
@@ -430,8 +401,8 @@ survManager <-
 				printl("[VSSM]\nWARNING:\nPVP gamemodes are NOT properly tested!");
 			}
 			break;
-		}
-	}*/
+		}*/
+	}
 	
 	// Stop the pistol drop spam caused by Manacat's mods
 	// https://steamcommunity.com/sharedfiles/filedetails/?id=213445426
@@ -690,7 +661,7 @@ survManager <-
 						break;
 					}
 				}
-				sData = format("%s\n\t%s = \n\t[%s \n\t]", sData, key, tableStr);
+				sData = format("%s\n\t%s = \n\t[%s\n\t]", sData, key, tableStr);
 				break;
 			}
 		}
@@ -3607,7 +3578,7 @@ survManager <-
 						DoEntFire("!self", "CallScriptFunction", "VSSMLoad", 0, null, worldSpawn);
 					}
 					VSSMAllowRoundStart = true;
-					//WarnIncompat();
+					WarnIncompat();
 				}
 				if (VSSMStartWepsInit == null && client != null && 
 				client.GetSurvivorSlot() <= 3)
@@ -4507,11 +4478,11 @@ survManager <-
 							switch (this.ChargeState[i])
 							{
 							case 0:
-								::survAnim.ForceSequence(this.Charged[i], "ACT_TERROR_HIT_BY_CHARGER");
+								::playerAnim.ForceSequence(this.Charged[i], "ACT_TERROR_HIT_BY_CHARGER");
 								this.ChargeState[i] = 1;
 								break;
 							case 2:
-								::survAnim.ForceSequence(this.Charged[i], "ACT_TERROR_CHARGERHIT_LAND_SLOW");
+								::playerAnim.ForceSequence(this.Charged[i], "ACT_TERROR_CHARGERHIT_LAND_SLOW");
 								this.ChargeState[i] = 3;
 								if (this.ChargeTime[i] == null)
 								{
@@ -4531,11 +4502,11 @@ survManager <-
 							switch (this.ChargeState[i])
 							{
 							case 0:
-								::survAnim.ForceSequence(this.Charged[i], "ACT_TERROR_HIT_BY_CHARGER");
+								::playerAnim.ForceSequence(this.Charged[i], "ACT_TERROR_HIT_BY_CHARGER");
 								this.ChargeState[i] = 1;
 								break;
 							case 1:
-								::survAnim.ForceSequence(this.Charged[i], "ACT_TERROR_IDLE_FALL_FROM_CHARGERHIT");
+								::playerAnim.ForceSequence(this.Charged[i], "ACT_TERROR_IDLE_FALL_FROM_CHARGERHIT");
 								this.ChargeState[i] = 2;
 								break;
 							}
@@ -5420,6 +5391,14 @@ survManager <-
 	
 	function GiveStartItems(client, origWeps = null, noDirItems = null)
 	{
+		// TODO HACK don't do this on survival/scavenge
+		// and figure out better system than survStartWeapons
+		switch (baseMode)
+		{
+		case "versus":
+		case "scavenge":
+			return;
+		}
 		//if (startItemsGranted.find(client.GetSurvivorSlot()) != null) return;
 		
 		local clOrigin = client.EyePosition();

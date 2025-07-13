@@ -1113,9 +1113,10 @@ case "cf_m5_highway":
 		else
 			printl("[VSSM] Couldn't find cf_npc_script!")
 	}
-	worldSpawn[1].VSSMCFNPC();
 	// CF Map 3 calls RunScriptFile cf_npc_script on @director, delay it a bit
 	if (g_MapName == "cf_m3_evac")
 		DoEntFire("!self", "CallScriptFunction", "VSSMCFNPC", 0.5, null, worldSpawn[0]);
+	else
+		worldSpawn[1].VSSMCFNPC();
 	break;
 }
