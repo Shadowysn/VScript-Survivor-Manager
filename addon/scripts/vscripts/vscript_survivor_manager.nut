@@ -31,19 +31,6 @@ if (!("teamCrashFix" in this) ||
 teamCrashFix <-
 {
 	version = TCFVersion,
-	// this system is flawed and is probably the cause of the inconsistent crashes
-	// at least oldteam == 0 can be checked
-	/*recentJoins = [],
-	function OnGameEvent_player_connect(params)
-	{
-		printl("EVENT player_connect");
-		g_ModeScript.DeepPrintTable(params);
-		if (!("userid" in params)) return;
-		
-		if (recentJoins.find(params["userid"]) == null)
-			recentJoins.append(params["userid"]);
-	}*/
-	
 	function OnGameEvent_player_team(params)
 	{
 		//printl("EVENT player_team");
@@ -1546,13 +1533,18 @@ survManager <-
 		
 		for (local body; body = Entities.FindByClassname( body, "survivor_death_model" );)
 		{
-			local bodyChar = NetProps.GetPropInt(body, "m_nCharacterType");
-			if (bodyChar != char || !body.ValidateScriptScope()) continue;
+			local time = Time();
+			local createTime = NetProps.GetPropFloat(body, "m_flCreateTime");
+			if (createTime != 0)
+				if (createTime != time) continue;
+			else
+				NetProps.SetPropFloat(body, "m_flCreateTime", time);
 			
+			if (!body.ValidateScriptScope()) continue;
 			local bodyScope = body.GetScriptScope();
-			if ("VSSMId" in bodyScope) continue;
+			if (!("VSSMId" in bodyScope))
+				bodyScope.VSSMId <- survId;
 			
-			bodyScope.VSSMId <- survId;
 			body.SetOrigin(client.GetOrigin());
 			if (!("SwapIds" in bodyScope) || bodyScope.SwapIds == null)
 				bodyScope.SwapIds <- DefibSwapIds.weakref();
@@ -2369,7 +2361,7 @@ survManager <-
 	{
 		if (!Settings.fixFriendlyFireLines) return;
 		local client = GetPlayerFromUserID( params["userid"] );
-		if ( client == null || !client.IsSurvivor() /*|| client.GetSurvivorSlot() <= 3*/ ) return;
+		if ( client == null || !client.IsSurvivor() ) return;
 		// Would've loved to optimize it so it won't play on the 4 survivors that will
 		// emit friendly fire lines by themselves, but apparently it's NOT slots
 		// or player entity order that dictates these 4 special survivors
@@ -5399,7 +5391,6 @@ survManager <-
 		case "scavenge":
 			return;
 		}
-		//if (startItemsGranted.find(client.GetSurvivorSlot()) != null) return;
 		
 		local clOrigin = client.EyePosition();
 		
