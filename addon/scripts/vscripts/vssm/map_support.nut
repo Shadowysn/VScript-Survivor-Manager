@@ -32,7 +32,7 @@ survManager.AlterStrip2 <- function()
 		if (client == null || g_existingPlys.find(client) != null) continue;
 		
 		local userid = client.GetPlayerUserId();
-		infoSpawnedSurvsList[NetProps.GetPropInt(self, "m_character")] <- userid;
+		VSSMInfoSpawnedSurvsList[NetProps.GetPropInt(self, "m_character")] <- userid;
 		break;
 	}*/
 }
@@ -83,9 +83,9 @@ survManager.IFSpawnSurvivor <- function()
 	if (!("VSSMIFOvr" in this))
 	{
 		local chosenChar = NetProps.GetPropInt(self, "m_character");
-		if (chosenChar in infoSpawnedSurvsList)
+		if (chosenChar in VSSMInfoSpawnedSurvsList)
 		{
-			local infoBot = GetPlayerFromUserID(infoSpawnedSurvsList[chosenChar]);
+			local infoBot = GetPlayerFromUserID(VSSMInfoSpawnedSurvsList[chosenChar]);
 			if (infoBot != null)
 			{
 				infoBot.SetOrigin(self.GetOrigin());
@@ -378,9 +378,9 @@ local function AttachItemFunc(scope, weaponName, overRideChar = null)
 			char = this.botChar;
 		else
 			char = NetProps.GetPropInt(self, "m_character");
-		if (char in ::infoSpawnedSurvsList)
+		if (char in ::VSSMInfoSpawnedSurvsList)
 		{
-			local infoBot = GetPlayerFromUserID(infoSpawnedSurvsList[char]);
+			local infoBot = GetPlayerFromUserID(VSSMInfoSpawnedSurvsList[char]);
 			if (infoBot != null)
 			{
 				infoBot.GiveItem(this.botWep);

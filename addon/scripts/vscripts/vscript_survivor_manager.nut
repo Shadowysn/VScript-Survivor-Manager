@@ -37,7 +37,7 @@ teamCrashFix <-
 		//g_ModeScript.DeepPrintTable(params);
 		if (!("userid" in params)) return;
 		local client = GetPlayerFromUserID(params["userid"]);
-		if (client == null || !client.IsValid()) return;
+		if (client == null) return;
 		
 		local hasTeamEv = ("team" in params && params.team != 0);
 		if (hasTeamEv && "oldteam" in params && params.oldteam == 0)
@@ -72,7 +72,7 @@ teamCrashFix <-
 		if (!("userid" in params)) return;
 		
 		local client = GetPlayerFromUserID(params["userid"]);
-		if (client == null || !client.IsValid()) return;
+		if (client == null) return;
 		
 		local initialTeam = NetProps.GetPropInt(client, "m_iInitialTeamNum");
 		if (initialTeam == 0) return;
@@ -265,14 +265,17 @@ local errorMeleeIdx = null;
 // persistent variables that NEED to last through soft map restarts
 // (basically any map loads that don't involve a loading poster)
 // strict survivor list that updates with SurvListFunc
-if (!("survManagerList" in this))
-{ survManagerList <- []; }
+if (!("VSSMSurvManagerList" in this))
+{ VSSMSurvManagerList <- []; }
 // strict spectator list that updates with SpecListFunc
-if (!("specManagerList" in this))
-{ specManagerList <- []; }
+if (!("VSSMSpecManagerList" in this))
+{ VSSMSpecManagerList <- []; }
+// slot list, MUST SYNC WITH VSSMSurvManagerList!!
+//if (!("VSSMSurvSlotList" in this))
+//{ VSSMSurvSlotList <- []; }
 // for map-entities info_l4d1_survivor_spawn spawned survivors 
-if (!("infoSpawnedSurvsList" in this))
-{ infoSpawnedSurvsList <- {}; }
+if (!("VSSMInfoSpawnedSurvsList" in this))
+{ VSSMInfoSpawnedSurvsList <- {}; }
 // round_start is too early for bots when map first loads
 if (!("VSSMAllowRoundStart" in this))
 { VSSMAllowRoundStart <- null; }
@@ -311,6 +314,9 @@ if (!("VSSMEssentialBots" in this))
 
 if (!("survManager" in this) || ("hasRoundEnded" in survManager))
 {
+
+local bodiesExclude = [];
+local bodiesExcludeTime = -1;
 
 local friendlyFireTime = 0;
 
@@ -483,7 +489,7 @@ survManager <-
 		
 		// spawning bots in round_start is a bit too early
 		// game's main survivors haven't even spawned
-		/*if (survManagerList.len() != 0)
+		/*if (VSSMSurvManagerList.len() != 0)
 		{
 			SpawnBot(0);
 		}*/
@@ -765,19 +771,19 @@ survManager <-
 		return entVarsList;
 	}
 	
-	// --=FUNCTION=-- survManagerList things
+	// --=FUNCTION=-- VSSMSurvManagerList things
 	function SurvListFunc(userid, boolean = true)
 	{
 		switch (boolean)
 		{
 		case true:
-			if (survManagerList.find(userid) == null)
-				survManagerList.append(userid);
+			if (VSSMSurvManagerList.find(userid) == null)
+				VSSMSurvManagerList.append(userid);
 			break;
 		default:
-			local arrLoc = survManagerList.find(userid);
+			local arrLoc = VSSMSurvManagerList.find(userid);
 			if (arrLoc != null)
-				survManagerList.remove(arrLoc);
+				VSSMSurvManagerList.remove(arrLoc);
 			break;
 		}
 	}
@@ -785,18 +791,18 @@ survManager <-
 	function RetrieveSurvList(checkScope = false)
 	{
 		local survList = [];
-		for (local i = 0; i < survManagerList.len(); i++)
+		for (local i = 0; i < VSSMSurvManagerList.len(); i++)
 		{
-			if (survManagerList[i] == null)
+			if (VSSMSurvManagerList[i] == null)
 			{
-				survManagerList.remove(i); i = i - 1;
+				VSSMSurvManagerList.remove(i); i = i - 1;
 				continue;
 			}
-			local client = GetPlayerFromUserID(survManagerList[i]);
+			local client = GetPlayerFromUserID(VSSMSurvManagerList[i]);
 			if (client == null || !client.IsSurvivor() || 
 			(checkScope && !client.ValidateScriptScope()))
 			{
-				survManagerList.remove(i); i = i - 1;
+				VSSMSurvManagerList.remove(i); i = i - 1;
 				continue;
 			}
 			survList.append(client);
@@ -809,13 +815,13 @@ survManager <-
 		switch (boolean)
 		{
 		case true:
-			if (specManagerList.find(userid) == null)
-				specManagerList.append(userid);
+			if (VSSMSpecManagerList.find(userid) == null)
+				VSSMSpecManagerList.append(userid);
 			break;
 		default:
-			local arrLoc = specManagerList.find(userid);
+			local arrLoc = VSSMSpecManagerList.find(userid);
 			if (arrLoc != null)
-				specManagerList.remove(arrLoc);
+				VSSMSpecManagerList.remove(arrLoc);
 			break;
 		}
 	}
@@ -823,18 +829,18 @@ survManager <-
 	function RetrieveSpecList(checkScope = false)
 	{
 		local specList = [];
-		for (local i = 0; i < specManagerList.len(); i++)
+		for (local i = 0; i < VSSMSpecManagerList.len(); i++)
 		{
-			if (specManagerList[i] == null)
+			if (VSSMSpecManagerList[i] == null)
 			{
-				specManagerList.remove(i); i = i - 1;
+				VSSMSpecManagerList.remove(i); i = i - 1;
 				continue;
 			}
-			local client = GetPlayerFromUserID(specManagerList[i]);
+			local client = GetPlayerFromUserID(VSSMSpecManagerList[i]);
 			if (client == null || NetProps.GetPropInt(client, "m_lifeState") == 0 || 
 			(checkScope && !client.ValidateScriptScope()))
 			{
-				specManagerList.remove(i); i = i - 1;
+				VSSMSpecManagerList.remove(i); i = i - 1;
 				continue;
 			}
 			specList.append(client);
@@ -1525,7 +1531,7 @@ survManager <-
 		if ( !("userid" in params) ) return;
 		
 		local client = GetPlayerFromUserID( params["userid"] );
-		if ( client == null || !client.IsValid() || !client.IsSurvivor() || 
+		if ( client == null || !client.IsSurvivor() || 
 		(!client.IsDead() && !client.IsDying()) ) return;
 		
 		local survId = client.GetPlayerUserId();
@@ -1535,15 +1541,31 @@ survManager <-
 		{
 			local time = Time();
 			local createTime = NetProps.GetPropFloat(body, "m_flCreateTime");
-			if (createTime != 0)
-				if (createTime != time) continue;
-			else
-				NetProps.SetPropFloat(body, "m_flCreateTime", time);
+			if (createTime != 0 && createTime != time) continue;
+			NetProps.SetPropFloat(body, "m_flCreateTime", time);
+			if (bodiesExcludeTime < time)
+			{
+				bodiesExclude.clear();
+				bodiesExcludeTime = time;
+			}
+			if (bodiesExclude.find(body) != null) continue;
+			bodiesExclude.append(body);
 			
 			if (!body.ValidateScriptScope()) continue;
 			local bodyScope = body.GetScriptScope();
-			if (!("VSSMId" in bodyScope))
-				bodyScope.VSSMId <- survId;
+			if ("VSSMId" in bodyScope) continue;
+			bodyScope.VSSMId <- survId;
+			if (!("VSSMChar" in bodyScope))
+				bodyScope.VSSMChar <- NetProps.GetPropInt(body, "m_nCharacterType");
+			
+			// if m_survivorCharacter is < -1 then m_nCharacterType loops back to < 255
+			local bodyChar = NetProps.GetPropInt(body, "m_nCharacterType");
+			if (bodyChar > 7 || GetPlayerFromCharacter(bodyChar) == null)
+			{
+				local survList = survManager.RetrieveSurvList();
+				if (0 in survList)
+					NetProps.SetPropInt(body, "m_nCharacterType", NetProps.GetPropInt(survList[0], "m_survivorCharacter"));
+			}
 			
 			body.SetOrigin(client.GetOrigin());
 			if (!("SwapIds" in bodyScope) || bodyScope.SwapIds == null)
@@ -1635,7 +1657,7 @@ survManager <-
 		if ( witch == null || !witch.IsValid() || witch.GetClassname() != "witch" || NetProps.GetPropInt(witch, "m_lifeState") != 0 ) return;
 		
 		local client = GetPlayerFromUserID( params["attacker"] );
-		if ( client == null || !client.IsValid() || !client.IsSurvivor() || NetProps.GetPropInt(client, "m_lifeState") != 0 ) return;
+		if ( client == null || !client.IsSurvivor() || NetProps.GetPropInt(client, "m_lifeState") != 0 ) return;
 		
 		if ((params["type"] & (1 << 28))) return; 
 		
@@ -1683,7 +1705,7 @@ survManager <-
 		if ( !("userid" in params) || !("witchid" in params) ) return;
 		
 		local client = GetPlayerFromUserID( params["userid"] );
-		if ( client == null || !client.IsValid() || !client.IsSurvivor() ) return;
+		if ( client == null || !client.IsSurvivor() ) return;
 		local witch = EntIndexToHScript( params["witchid"] );
 		if ( witch == null || !witch.IsValid() ) return;
 		
@@ -1761,7 +1783,7 @@ survManager <-
 		if ( !("userid" in params) ) return;
 		
 		local client = GetPlayerFromUserID( params["userid"] );
-		if ( client == null || !client.IsValid() ) return;
+		if ( client == null ) return;
 		local upgradeBox = EntIndexToHScript( params["upgradeid"] );
 		if ( upgradeBox == null || !upgradeBox.IsValid() || upgradeBox.GetClassname().slice(0, 13) != "upgrade_ammo_" || !upgradeBox.ValidateScriptScope() ) return;
 		
@@ -2232,7 +2254,21 @@ survManager <-
 	
 	function DefibCheck()
 	{
-		if (activator == null || !activator.IsValid() || !("VSSMId" in this)) return;
+		if (activator == null || !activator.IsValid()) return;
+		local function NotValid()
+		{
+			ClientPrint(activator, 3, "\x04"+"This body is no longer valid");
+			activator.Stagger(Vector());
+			NetProps.SetPropFloat(activator, "m_staggerTimer.m_duration", 0);
+			NetProps.SetPropFloat(activator, "m_staggerTimer.m_timestamp", 0);
+			self.Kill();
+		}
+		if (!("VSSMId" in this))
+		{
+			NotValid();
+			return;
+		}
+		
 		local useObj = NetProps.GetPropEntity(activator, "m_useActionTarget");
 		//printl("body m_useActionOwner: "+user) // m_useActionOwner is invalid on body
 		if (useObj != self) return;
@@ -2248,13 +2284,16 @@ survManager <-
 		// just to suffer
 		
 		local client = GetPlayerFromUserID(this.VSSMId);
-		if (client == null) return;
+		if (client == null)
+		{
+			NotValid();
+			return;
+		}
 		
 		// L4D1 surv set definitely has GetPlayerFromCharacter affected
 		local char = NetProps.GetPropInt(client, "m_survivorCharacter");
 		if (GetPlayerFromCharacter(char) == client) return;
 		
-		local testchar = NetProps.GetPropInt(client, "m_survivorCharacter");
 		if (developer()) printl("likely revived: "+client);
 		
 		activator.Stagger(Vector());
@@ -2264,12 +2303,14 @@ survManager <-
 		for ( moveChild = activator.FirstMoveChild(); moveChild != null; moveChild = moveChild.NextMovePeer() )
 		{
 			if (!moveChild.IsValid() || moveChild.GetClassname() != "weapon_defibrillator") continue;
-			DoEntFire("!self", "Kill", "", 0, null, moveChild);
+			moveChild.Kill();
 			break;
 		}
 		
-		local victimName = (IsPlayerABot(client)) ? GetCharacterDisplayName(client) : client.GetPlayerName();
-		local rescuerName = (IsPlayerABot(activator)) ? GetCharacterDisplayName(activator) : activator.GetPlayerName();
+		local bodyChar = NetProps.GetPropInt(self, "m_nCharacterType");
+		local rescuerChar = NetProps.GetPropInt(activator, "m_survivorCharacter");
+		local victimName = (IsPlayerABot(client) && char >= 0 && char <= 7) ? GetCharacterDisplayName(client) : client.GetPlayerName();
+		local rescuerName = (IsPlayerABot(activator) && rescuerChar >= 0 && rescuerChar <= 7) ? GetCharacterDisplayName(activator) : activator.GetPlayerName();
 		
 		local survList = survManager.RetrieveSurvList(false);
 		local survCharList = [];
@@ -2303,12 +2344,23 @@ survManager <-
 			entCharList.append(NetProps.GetPropInt(entVarList[i], "m_nCharacterType"));
 			NetProps.SetPropInt(entVarList[i], "m_nCharacterType", 8);
 		}
+		local invalidChar = !(char >= 0 && char <= 7) || !(bodyChar >= 0 && bodyChar <= 7);
+		if (invalidChar)
+		{
+			NetProps.SetPropInt(self, "m_nCharacterType", 9);
+			NetProps.SetPropInt(client, "m_survivorCharacter", 9);
+		}
+		
 		client.ReviveByDefib();
 		FireGameEvent("defibrillator_used", {
 			userid = activator.GetPlayerUserId(),
 			subject = client.GetPlayerUserId(),
 		});
-		ClientPrint(null, 3, "\x04"+rescuerName+" brought "+victimName+" back from the dead");
+		if (!client.IsDead() && !client.IsDying())
+			ClientPrint(null, 3, "\x04"+rescuerName+" brought "+victimName+" back from the dead");
+		if (invalidChar)
+			NetProps.SetPropInt(client, "m_survivorCharacter", char);
+		StopSoundOn("Defibrillator.UseStart", activator);
 		
 		if (survCharList.len() != 0)
 		{
@@ -2330,12 +2382,21 @@ survManager <-
 	{
 		if (!Settings.fixDefibrillator) return;
 		local client = GetPlayerFromUserID( params["userid"] );
-		if ( client == null || !client.IsValid() ) return;
+		if ( client == null ) return;
 		local body = NetProps.GetPropEntity(client, "m_useActionTarget");
 		if ( body == null || !body.IsValid() || body.GetClassname() != "survivor_death_model" || !body.ValidateScriptScope() ) return;
 		
 		local bodyScope = body.GetScriptScope();
-		if (!("VSSMId" in bodyScope)) return;
+		if (!("VSSMId" in bodyScope) || GetPlayerFromUserID(bodyScope.VSSMId) == null)
+		{
+			//NotValid();
+			ClientPrint(client, 3, "\x04"+"This body is no longer valid");
+			client.Stagger(Vector());
+			NetProps.SetPropFloat(client, "m_staggerTimer.m_duration", 0);
+			NetProps.SetPropFloat(client, "m_staggerTimer.m_timestamp", 0);
+			body.Kill();
+			return;
+		}
 		
 		local duration = NetProps.GetPropFloat(client, "m_flProgressBarDuration");
 		//printl("m_flProgressBarDuration: "+duration)
@@ -2353,6 +2414,32 @@ survManager <-
 			bodyScope.activator <- client;
 			bodyScope.VSSMDefib <- DefibCheck.weakref();
 			bodyScope.VSSMDefib();
+		}
+	}
+	
+	function OnGameEvent_player_disconnect(params)
+	{
+		if (!Settings.fixDefibrillator || !("userid" in params)) return;
+		local client = GetPlayerFromUserID(params["userid"]);
+		if (client == null || !client.IsSurvivor()) return;
+		
+		local entVarList = RetrieveEntVarList(false);
+		if (entVarList.len() != 0)
+		{
+			foreach (key, ent in entVarList)
+			{
+				if (ent.GetClassname() != "survivor_death_model") continue;
+				
+				// if m_survivorCharacter is < -1 then m_nCharacterType loops back to < 255
+				local bodyChar = NetProps.GetPropInt(ent, "m_nCharacterType");
+				local bodyCharPly = GetPlayerFromCharacter(bodyChar);
+				if (bodyChar > 7 || bodyCharPly == null || bodyCharPly == client)
+				{
+					local survList = survManager.RetrieveSurvList();
+					if (0 in survList)
+						NetProps.SetPropInt(ent, "m_nCharacterType", NetProps.GetPropInt(survList[0], "m_survivorCharacter"));
+				}
+			}
 		}
 	}
 	
@@ -2669,6 +2756,8 @@ survManager <-
 				
 				selectedSlots.append(char);
 			}
+			//VSSMSurvSlotList.clear();
+			//VSSMSurvSlotList.extend(selectedSlots);
 			//printl("selectedSlots:")
 			//g_ModeScript.DeepPrintTable(selectedSlots);
 		}
@@ -2822,7 +2911,7 @@ survManager <-
 	
 	function RoundStart()
 	{
-		//g_ModeScript.DeepPrintTable("survManagerList: "+survManagerList);
+		//g_ModeScript.DeepPrintTable("VSSMSurvManagerList: "+VSSMSurvManagerList);
 		//if (specTbl.len() == 0)
 		//{RestoreTable("VSSM_PreferSpec", specTbl);}
 		survManager.SpawnBot(0);
@@ -2898,7 +2987,7 @@ survManager <-
 			}
 		}
 		local keysToRemove = [];
-		foreach (key, value in infoSpawnedSurvsList)
+		foreach (key, value in VSSMInfoSpawnedSurvsList)
 		{
 			local client = GetPlayerFromUserID(value);
 			if (client == null)
@@ -2906,7 +2995,7 @@ survManager <-
 		}
 		foreach (key, i in keysToRemove)
 		{
-			delete infoSpawnedSurvsList[i];
+			delete VSSMInfoSpawnedSurvsList[i];
 		}
 	}
 	
@@ -3119,9 +3208,9 @@ survManager <-
 				DoEntFire("!self", "ReleaseFromSurvivorPosition", "", 0, null, activator);
 				DoEntFire("!self", "CallScriptFunction", "IFOverride0", 0, null, activator);
 				local char = NetProps.GetPropInt(activator, "m_survivorCharacter");
-				if (char in ::infoSpawnedSurvsList)
+				if (char in ::VSSMInfoSpawnedSurvsList)
 				{
-					local infoBot = GetPlayerFromUserID(infoSpawnedSurvsList[char]);
+					local infoBot = GetPlayerFromUserID(VSSMInfoSpawnedSurvsList[char]);
 					if (infoBot != null)
 					{
 						DoEntFire("!self", "TeleportToSurvivorPosition", NetProps.GetPropString(posEnt, "m_iName"), 0, null, infoBot);
@@ -3167,9 +3256,9 @@ survManager <-
 			local glowNew = NetProps.GetPropInt(activator, "m_bSurvivorGlowEnabled");
 			NetProps.SetPropInt(activator, "m_bSurvivorGlowEnabled", this.VSSMGlowHack[0]);
 			local char = NetProps.GetPropInt(activator, "m_survivorCharacter");
-			if (char in ::infoSpawnedSurvsList)
+			if (char in ::VSSMInfoSpawnedSurvsList)
 			{
-				local infoBot = GetPlayerFromUserID(infoSpawnedSurvsList[char]);
+				local infoBot = GetPlayerFromUserID(VSSMInfoSpawnedSurvsList[char]);
 				if (infoBot != null)
 				{
 					NetProps.SetPropInt(infoBot, "m_bSurvivorGlowEnabled", glowNew);
@@ -3199,9 +3288,9 @@ survManager <-
 		{
 		case 2:
 			local char = NetProps.GetPropInt(self, "m_survivorCharacter");
-			if (char in ::infoSpawnedSurvsList)
+			if (char in ::VSSMInfoSpawnedSurvsList)
 			{
-				local infoBot = GetPlayerFromUserID(infoSpawnedSurvsList[char]);
+				local infoBot = GetPlayerFromUserID(VSSMInfoSpawnedSurvsList[char]);
 				if (infoBot != null)
 				{
 					DoEntFire("!self", "Kill", "", 0, activator, infoBot);
@@ -3243,9 +3332,9 @@ survManager <-
 			//		DoEntFire("!self", "TeleportToSurvivorPosition", "", 0, activator, loopClient);
 			//		break;
 			//	}
-				if (char in ::infoSpawnedSurvsList)
+				if (char in ::VSSMInfoSpawnedSurvsList)
 				{
-					local infoBot = GetPlayerFromUserID(infoSpawnedSurvsList[char]);
+					local infoBot = GetPlayerFromUserID(VSSMInfoSpawnedSurvsList[char]);
 					if (infoBot != null)
 					{
 						// can't get the input data on input hook, stupid
@@ -3294,9 +3383,9 @@ survManager <-
 			{
 			case 4: case 5: case 6: case 7:
 				local char = NetProps.GetPropInt(self, "m_survivorCharacter");
-				if (char in ::infoSpawnedSurvsList)
+				if (char in ::VSSMInfoSpawnedSurvsList)
 				{
-					local infoBot = GetPlayerFromUserID(infoSpawnedSurvsList[char]);
+					local infoBot = GetPlayerFromUserID(VSSMInfoSpawnedSurvsList[char]);
 					if (infoBot != null)
 					{
 						DoEntFire("!self", "ReleaseFromSurvivorPosition", "", 0, activator, infoBot);
@@ -3318,9 +3407,9 @@ survManager <-
 			switch (char)
 			{
 			case 4: case 5: case 6: case 7:
-				if (char in ::infoSpawnedSurvsList)
+				if (char in ::VSSMInfoSpawnedSurvsList)
 				{
-					local infoBot = GetPlayerFromUserID(infoSpawnedSurvsList[char]);
+					local infoBot = GetPlayerFromUserID(VSSMInfoSpawnedSurvsList[char]);
 					if (infoBot != null)
 					{
 						local worldSpawn = Entities.First();
@@ -3454,7 +3543,7 @@ survManager <-
 		if (!("userid" in params)) return;
 		local client = GetPlayerFromUserID(params["userid"]);
 		//printl("Teamer retrieve attempt: "+client)
-		if (client == null || !client.IsValid()) return;
+		if (client == null) return;
 		local clScope = null;
 		local isDisconnect = ("disconnect" in params && params.disconnect == 1);
 		//printl("Teamer passed valid checks")
@@ -3637,8 +3726,8 @@ survManager <-
 			{
 			case 4:
 				local char = NetProps.GetPropInt(client, "m_survivorCharacter");
-				if (!(char in ::infoSpawnedSurvsList) || GetPlayerFromUserID(::infoSpawnedSurvsList[char]) == null)
-					::infoSpawnedSurvsList[char] <- params["userid"];
+				if (!(char in ::VSSMInfoSpawnedSurvsList) || GetPlayerFromUserID(::VSSMInfoSpawnedSurvsList[char]) == null)
+					::VSSMInfoSpawnedSurvsList[char] <- params["userid"];
 			default:
 				SpawnSurvivor(client, params["userid"]);
 				break;
@@ -3646,7 +3735,7 @@ survManager <-
 			
 			/*if (expectedInfoBots > 0)
 			{
-				::infoSpawnedSurvsList[NetProps.GetPropInt(client, "m_survivorCharacter")] <- params["userid"];
+				::VSSMInfoSpawnedSurvsList[NetProps.GetPropInt(client, "m_survivorCharacter")] <- params["userid"];
 				expectedInfoBots--;
 			}
 			else
@@ -3671,7 +3760,7 @@ survManager <-
 		if ( !("userid" in params) ) return;
 		
 		local client = GetPlayerFromUserID( params["userid"] );
-		if ( client == null || !client.IsValid() || !client.IsSurvivor() ) return;
+		if ( client == null || !client.IsSurvivor() ) return;
 		
 		InitPlaySurvivor(client, params["userid"]);
 	}
@@ -5004,18 +5093,6 @@ survManager <-
 		case "scavenge":
 			return;
 		}
-		if (!("VSSMMapTrans" in getroottable()))
-		{
-			SpawnEntityGroupFromTable({
-				[0] = {
-					env_global = {
-						spawnflags = (1 << 0),
-						initialstate = 1,
-						globalstate = "mapTransitioned"
-					}
-				}
-			});
-		}
 		
 		//local bottedIDs = [];
 		
@@ -5243,7 +5320,7 @@ survManager <-
 	{
 		if (!Settings.restoreExtraSurvsItemsOnTransition) return false;
 		if (VSSMTransItemsTbl == null) return false;
-		if (!("VSSMMapTrans" in getroottable()))
+		if (Director.IsSessionStartMap())
 		{
 			VSSMTransItemsTbl = null;
 			return false;
@@ -5830,17 +5907,8 @@ case "glubtastic4_7":
 	local giverTrigger = Entities.FindByClassnameNearest("trigger_once", Vector(-860, -100, -960), 20);
 	if (giverTrigger != null)
 	{
-		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "louis", "SpawnSurvivor", "");
-		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "francis", "SpawnSurvivor", "");
-		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "!francis", "SetGlowEnabled", "false");
-		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "!louis", "SetGlowEnabled", "false");
 		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "!francis", "RunScriptFile", "giveshotgun");
 		EntityOutputs.RemoveOutput(giverTrigger, "OnStartTouch", "!louis", "RunScriptFile", "giveshotgun");
-		
-		EntFire("francis", "SpawnSurvivor", "", 0.1);
-		EntFire("louis", "SpawnSurvivor", "", 0.1);
-		EntFire("!francis", "SetGlowEnabled", "0", 0.15);
-		EntFire("!louis", "SetGlowEnabled", "0", 0.15);
 	}
 	break;
 }
