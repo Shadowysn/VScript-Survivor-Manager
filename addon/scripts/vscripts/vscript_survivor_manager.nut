@@ -3,13 +3,12 @@ printl("Activating VScript Survivor Manager");
 
 /*
 
-i see u boi
+OH NO
 
 */
 
 // todo:
 /*
-- block and/or forward inputs from our team 2 survivors to team 4 (fixed)
 - charger fix W.I.P. figure out how to recreate freezing takedown
 effects of trigger upon death also not tested (likely fixed)
 - defibrillator fix W.I.P. higher priority
@@ -121,6 +120,25 @@ playerAnim <-
 	function ForceSequence(client, anim)
 	{
 		if (client.GetMoveParent() != null) return;
+		
+		switch (typeof anim)
+		{
+		case "float":
+			try {
+				anim = anim.tointeger();
+			} catch (error) {
+				return;
+			}
+		case "integer":
+			anim = client.GetSequenceName(anim);
+			if (anim == "Unknown")
+				return;
+			break;
+		case "string":
+			break;
+		default:
+			return;
+		}
 		
 		local worldSpawn = Entities.First();
 		if (!worldSpawn.ValidateScriptScope()) return;
@@ -1537,42 +1555,45 @@ survManager <-
 		local survId = client.GetPlayerUserId();
 		local char = NetProps.GetPropInt(client, "m_survivorCharacter");
 		
-		for (local body; body = Entities.FindByClassname( body, "survivor_death_model" );)
+		if (Settings.fixDefibrillator)
 		{
-			local time = Time();
-			local createTime = NetProps.GetPropFloat(body, "m_flCreateTime");
-			if (createTime != 0 && createTime != time) continue;
-			NetProps.SetPropFloat(body, "m_flCreateTime", time);
-			if (bodiesExcludeTime < time)
+			for (local body; body = Entities.FindByClassname( body, "survivor_death_model" );)
 			{
-				bodiesExclude.clear();
-				bodiesExcludeTime = time;
+				local time = Time();
+				local createTime = NetProps.GetPropFloat(body, "m_flCreateTime");
+				if (createTime != 0 && createTime != time) continue;
+				NetProps.SetPropFloat(body, "m_flCreateTime", time);
+				if (bodiesExcludeTime < time)
+				{
+					bodiesExclude.clear();
+					bodiesExcludeTime = time;
+				}
+				if (bodiesExclude.find(body) != null) continue;
+				bodiesExclude.append(body);
+				
+				if (!body.ValidateScriptScope()) continue;
+				local bodyScope = body.GetScriptScope();
+				if ("VSSMId" in bodyScope) continue;
+				bodyScope.VSSMId <- survId;
+				if (!("VSSMChar" in bodyScope))
+					bodyScope.VSSMChar <- NetProps.GetPropInt(body, "m_nCharacterType");
+				
+				// if m_survivorCharacter is < -1 then m_nCharacterType loops back to < 255
+				local bodyChar = NetProps.GetPropInt(body, "m_nCharacterType");
+				if (bodyChar > 7 || GetPlayerFromCharacter(bodyChar) == null)
+				{
+					local survList = survManager.RetrieveSurvList();
+					if (0 in survList)
+						NetProps.SetPropInt(body, "m_nCharacterType", NetProps.GetPropInt(survList[0], "m_survivorCharacter"));
+				}
+				
+				body.SetOrigin(client.GetOrigin());
+				if (!("SwapIds" in bodyScope) || bodyScope.SwapIds == null)
+					bodyScope.SwapIds <- DefibSwapIds.weakref();
+				
+				EntVarFunc(body, true);
+				break;
 			}
-			if (bodiesExclude.find(body) != null) continue;
-			bodiesExclude.append(body);
-			
-			if (!body.ValidateScriptScope()) continue;
-			local bodyScope = body.GetScriptScope();
-			if ("VSSMId" in bodyScope) continue;
-			bodyScope.VSSMId <- survId;
-			if (!("VSSMChar" in bodyScope))
-				bodyScope.VSSMChar <- NetProps.GetPropInt(body, "m_nCharacterType");
-			
-			// if m_survivorCharacter is < -1 then m_nCharacterType loops back to < 255
-			local bodyChar = NetProps.GetPropInt(body, "m_nCharacterType");
-			if (bodyChar > 7 || GetPlayerFromCharacter(bodyChar) == null)
-			{
-				local survList = survManager.RetrieveSurvList();
-				if (0 in survList)
-					NetProps.SetPropInt(body, "m_nCharacterType", NetProps.GetPropInt(survList[0], "m_survivorCharacter"));
-			}
-			
-			body.SetOrigin(client.GetOrigin());
-			if (!("SwapIds" in bodyScope) || bodyScope.SwapIds == null)
-				bodyScope.SwapIds <- DefibSwapIds.weakref();
-			
-			EntVarFunc(body, true);
-			break;
 		}
 		
 		local ability = NetProps.GetPropEntity(client, "m_customAbility");
@@ -2273,7 +2294,7 @@ survManager <-
 		//printl("body m_useActionOwner: "+user) // m_useActionOwner is invalid on body
 		if (useObj != self) return;
 		
-		local isTimeUp = (Time() >= NetProps.GetPropFloat(activator, "m_flProgressBarStartTime") + NetProps.GetPropFloat(activator, "m_flProgressBarDuration")-0.15);
+		local isTimeUp = (Time() >= NetProps.GetPropFloat(activator, "m_flProgressBarStartTime") + NetProps.GetPropFloat(activator, "m_flProgressBarDuration")-0.3);
 		//printl("isTimeUp: "+isTimeUp)
 		if (!isTimeUp) return;
 		
@@ -2292,7 +2313,11 @@ survManager <-
 		
 		// L4D1 surv set definitely has GetPlayerFromCharacter affected
 		local char = NetProps.GetPropInt(client, "m_survivorCharacter");
-		if (GetPlayerFromCharacter(char) == client) return;
+		local bodyChar = NetProps.GetPropInt(self, "m_nCharacterType");
+		local invalidChar = !(char >= 0 && char <= 7) || !(bodyChar >= 0 && bodyChar <= 7);
+		if (!invalidChar && 
+		GetPlayerFromCharacter(char) == client && 
+		GetPlayerFromCharacter(bodyChar) == client) return;
 		
 		if (developer()) printl("likely revived: "+client);
 		
@@ -2307,7 +2332,6 @@ survManager <-
 			break;
 		}
 		
-		local bodyChar = NetProps.GetPropInt(self, "m_nCharacterType");
 		local rescuerChar = NetProps.GetPropInt(activator, "m_survivorCharacter");
 		local victimName = (IsPlayerABot(client) && char >= 0 && char <= 7) ? GetCharacterDisplayName(client) : client.GetPlayerName();
 		local rescuerName = (IsPlayerABot(activator) && rescuerChar >= 0 && rescuerChar <= 7) ? GetCharacterDisplayName(activator) : activator.GetPlayerName();
@@ -2326,7 +2350,15 @@ survManager <-
 					NetProps.SetPropInt(self, "m_nCharacterType", newChar);
 				}
 				else
-					NetProps.SetPropInt(self, "m_nCharacterType", char);
+				{
+					if (invalidChar)
+					{
+						NetProps.SetPropInt(client, "m_survivorCharacter", 9);
+						NetProps.SetPropInt(self, "m_nCharacterType", 9);
+					}
+					else
+						NetProps.SetPropInt(self, "m_nCharacterType", char);
+				}
 			}
 			else
 				NetProps.SetPropInt(survList[i], "m_survivorCharacter", 8);
@@ -2343,12 +2375,6 @@ survManager <-
 			}
 			entCharList.append(NetProps.GetPropInt(entVarList[i], "m_nCharacterType"));
 			NetProps.SetPropInt(entVarList[i], "m_nCharacterType", 8);
-		}
-		local invalidChar = !(char >= 0 && char <= 7) || !(bodyChar >= 0 && bodyChar <= 7);
-		if (invalidChar)
-		{
-			NetProps.SetPropInt(self, "m_nCharacterType", 9);
-			NetProps.SetPropInt(client, "m_survivorCharacter", 9);
 		}
 		
 		client.ReviveByDefib();
@@ -3473,29 +3499,29 @@ survManager <-
 			
 			local worldSpawn = Entities.First();
 			local strToUse = "Input"+GetFromStringTable("Kill", worldSpawn);
-			if (!(strToUse in clScope))
+			if (!(strToUse in clScope) || (strToUse in clScope) != IFKillRef)
 				clScope[strToUse] <- IFKillRef;
 			
 			strToUse = "Input"+GetFromStringTable("KillHierarchy", worldSpawn);
-			if (!(strToUse in clScope))
+			if (!(strToUse in clScope) || (strToUse in clScope) != IFKillHierarchyRef)
 				clScope[strToUse] <- IFKillHierarchyRef;
 			
 			strToUse = "Input"+GetFromStringTable("TeleportToSurvivorPosition", worldSpawn);
-			if (!(strToUse in clScope))
+			if (!(strToUse in clScope) || (strToUse in clScope) != IFTeleportToSurvivorPositionRef)
 				clScope[strToUse] <- IFTeleportToSurvivorPositionRef;
 			
 			strToUse = "Input"+GetFromStringTable("ReleaseFromSurvivorPosition", worldSpawn);
-			if (!(strToUse in clScope))
+			if (!(strToUse in clScope) || (strToUse in clScope) != IFReleaseFromSurvivorPositionRef)
 				clScope[strToUse] <- IFReleaseFromSurvivorPositionRef;
 			
 			strToUse = "Input"+GetFromStringTable("SetGlowEnabled", worldSpawn);
-			if (!(strToUse in clScope))
+			if (!(strToUse in clScope) || (strToUse in clScope) != IFSetGlowEnabledRef)
 				clScope[strToUse] <- IFSetGlowEnabledRef;
 			
 			if (survManager.GetSurvSet() == 1)
 			{
 				strToUse = "Input"+GetFromStringTable("ClearContext", worldSpawn);
-				if (!(strToUse in clScope))
+				if (!(strToUse in clScope) || (strToUse in clScope) != IFClearContextRef)
 					clScope[strToUse] <- IFClearContextRef;
 			}
 			break;
@@ -3900,7 +3926,7 @@ survManager <-
 				catch (err) {
 					chatResult1 = chatResult[0];
 					chatResult[0] = 1;
-					//SpawnBot(1, GetPlayerFromUserID(params["userid"]), SPAWNTYPE_CMD);
+					//SpawnBot(1, client.GetOrigin(), SPAWNTYPE_CMD);
 					//return;
 				}
 				if (chatResult[0] < 0) return;
@@ -3964,10 +3990,10 @@ survManager <-
 					}
 				}
 				
-				SpawnBot(chatResult[0], GetPlayerFromUserID(params["userid"]), SPAWNTYPE_CMD);
+				SpawnBot(chatResult[0], client.GetOrigin(), SPAWNTYPE_CMD);
 			}
 			else
-				SpawnBot(1, GetPlayerFromUserID(params["userid"]), SPAWNTYPE_CMD);
+				SpawnBot(1, client.GetOrigin(), SPAWNTYPE_CMD);
 			
 			return; // need to return to not trigger the switch case way below
 		}
@@ -4364,12 +4390,12 @@ survManager <-
 					if (!isDedicated)
 					{
 						local host = GetListenServerHost();
-						ClientPrint(host, 3, "\x03"+"[VSSM]"+"\x01"+"\nThe maximum amount of survivors is "+maxPlayers+"! What are you doing?");
+						ClientPrint(host, 3, "\x03"+"[VSSM]"+"\x01"+"\nMaximum amount of shared player slots for survivors and special infected (except Witch) is "+maxPlayers+"!");
 						if (brokeIt) ClientPrint(host, 3, "Auto-Manager disabled.");
 					}
 					else
 					{
-						printl("[VSSM]\nThe maximum amount of survivors is "+maxPlayers+"! What are you doing?");
+						printl("[VSSM]\nMaximum amount of shared player slots for survivors and special infected (except Witch) is "+maxPlayers+"!");
 						if (brokeIt) printl("Auto-Manager disabled.");
 					}
 				}
@@ -4851,7 +4877,7 @@ survManager <-
 		}
 	}
 	
-	function SpawnBot(number = 1, client = null, spawnTypeNum = SPAWNTYPE_CHECK)
+	function SpawnBot(number = 1, origin = null, spawnTypeNum = SPAWNTYPE_CHECK)
 	{
 		if (g_iBotAttempts >= MAX_SPAWN_ATTEMPTS && spawnTypeNum == SPAWNTYPE_CHECK) return;
 		
@@ -4860,9 +4886,9 @@ survManager <-
 		
 		local survList = null;
 		g_vecSummon = null;
-		if (client != null)
+		if (origin != null)
 		{
-			g_vecSummon = client.GetOrigin();
+			g_vecSummon = origin;
 		}
 		else
 		{

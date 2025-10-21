@@ -270,13 +270,14 @@ if (director != null && director.ValidateScriptScope())
 	}*/
 	directorScope.IFForceSurvivorPositionsRef <- directorScope.IFForceSurvivorPositions.weakref();
 	local strToUse = "Input"+survManager.GetFromStringTable("ForceSurvivorPositions", director);
-	if (!(strToUse in directorScope))
+	if (!(strToUse in directorScope) || (strToUse in directorScope) != directorScope.IFForceSurvivorPositionsRef)
 		directorScope[strToUse] <- directorScope.IFForceSurvivorPositionsRef;
 	
 	// TODO: on official campaigns CharCheck seems to not run before
 	// ForceSurvivorPositions is fired, so extra survivors use the 
 	// incorrect position when spawning in the map for the first time
 	// an inconsistency that needs to be noted
+	// 7/26/2025: possibly fixed by making creating survivor bots instant now?
 }
 
 /*local outroStats = Entities.FindByClassname(null, "env_outtro_stats");
@@ -319,7 +320,7 @@ survManager.UpdateMapEntHooking <- function()
 		
 		local spawnerScope = survSpawner.GetScriptScope();
 		local strToUse = "Input"+survManager.GetFromStringTable("SpawnSurvivor", survSpawner);
-		if (!(strToUse in spawnerScope))
+		if (!(strToUse in spawnerScope) || (strToUse in spawnerScope) != spawnerScope.IFSpawnSurvivorRef)
 			spawnerScope[strToUse] <- survManager.IFSpawnSurvivorRef;
 		
 		if (!("VSSMFunc" in spawnerScope))
