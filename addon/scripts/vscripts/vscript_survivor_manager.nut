@@ -144,10 +144,6 @@ playerAnim <-
 		if (!worldSpawn.ValidateScriptScope()) return;
 		
 		local worldScope = worldSpawn.GetScriptScope();
-		if (!("VScrAlterFS1" in worldScope) || worldScope.VScrAlterFS1 == null)
-			worldScope.VScrAlterFS1 <- AlterFS1.weakref();
-		if (!("VScrAlterFS2" in worldScope) || worldScope.VScrAlterFS2 == null)
-			worldScope.VScrAlterFS2 <- AlterFS2.weakref();
 		if (!("VScrAlterFS1Var" in worldScope) || worldScope.VScrAlterFS1Var == null)
 			worldScope.VScrAlterFS1Var <- [];
 		if (!("VScrAlterFS2Var" in worldScope) || worldScope.VScrAlterFS2Var == null)
@@ -169,18 +165,21 @@ playerAnim <-
 			QAngle(clAngles.x, clAngles.y, 0),
 			anim,
 		]);
+		local clVelocity = client.GetVelocity();
+		if (NetProps.GetPropInt(client, "m_fFlags") & (1 << 0)) // FL_ONGROUND
+			clVelocity.z = 0; // avoid double fall damage
 		worldScope.VScrAlterFS2Var.append([
 			clOrigin,
 			clAngles,
-			client.GetVelocity(),
+			clVelocity,
 		]);
 		
-		DoEntFire("!self", "CallScriptFunction", "VScrAlterFS1", 0, HackPos, worldSpawn);
+		DoEntFire("!self", "RunScriptCode", "(playerAnim.AlterFS1)()", 0, HackPos, worldSpawn);
 		DoEntFire("!self", "CallScriptFunction", "IFOverride1", 0, null, client);
 		DoEntFire("!self", "TeleportToSurvivorPosition", "VScrFSHack", 0, null, client);
 		DoEntFire("!self", "CallScriptFunction", "IFOverride0", 0, null, client);
 		DoEntFire("!self", "ClearParent", "", 0, null, client);
-		DoEntFire("!self", "CallScriptFunction", "VScrAlterFS2", 0, client, worldSpawn);
+		DoEntFire("!self", "RunScriptCode", "(playerAnim.AlterFS2)()", 0, client, worldSpawn);
 	}
 	function AlterFS1()
 	{
