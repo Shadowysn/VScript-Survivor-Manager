@@ -27,7 +27,7 @@ musicControl <-
 			{
 				if (!(0 in MessageArray)) return;
 				self.__KeyValueFromString("message", this.MessageArray[0]);
-				if (1 in MessageArray)
+				if (1 in MessageArray && this.MessageArray[1] != null)
 				{
 					local plyList = [];
 					for (local client; client = Entities.FindByClassname( client, "player" );)

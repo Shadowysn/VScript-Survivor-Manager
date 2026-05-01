@@ -24,10 +24,10 @@ see custom survivor bot in a custom coldy map (mostly fixed)
 local TCFVersion = 2;
 // teamCrashFix handles fixing team crashing by setting the bots to 
 // their proper team before removal from the team list by the game's hard code
-if (!("teamCrashFix" in this) || 
-(!("version" in teamCrashFix) || teamCrashFix.version < TCFVersion))
+if (!("teamCrashFix" in getroottable()) || 
+(!("version" in ::teamCrashFix) || ::teamCrashFix.version < TCFVersion))
 {
-teamCrashFix <-
+::teamCrashFix <-
 {
 	version = TCFVersion,
 	function OnGameEvent_player_team(params)
@@ -106,13 +106,13 @@ teamCrashFix <-
 	}
 }
 }
-__CollectEventCallbacks(teamCrashFix, "OnGameEvent_", "GameEventCallbacks", RegisterScriptGameEventListener);
+__CollectEventCallbacks(::teamCrashFix, "OnGameEvent_", "GameEventCallbacks", RegisterScriptGameEventListener);
 
 local playerAnimVersion = 1;
-if (!("playerAnim" in this) || 
-(!("version" in playerAnim) || playerAnim.version < playerAnimVersion))
+if (!("playerAnim" in getroottable()) || 
+(!("version" in ::playerAnim) || ::playerAnim.version < playerAnimVersion))
 {
-playerAnim <-
+::playerAnim <-
 {
 	version = playerAnimVersion,
 	HackPos = null,
@@ -174,12 +174,12 @@ playerAnim <-
 			clVelocity,
 		]);
 		
-		DoEntFire("!self", "RunScriptCode", "(playerAnim.AlterFS1)()", 0, HackPos, worldSpawn);
+		DoEntFire("!self", "RunScriptCode", "(::playerAnim.AlterFS1)()", 0, HackPos, worldSpawn);
 		DoEntFire("!self", "CallScriptFunction", "IFOverride1", 0, null, client);
 		DoEntFire("!self", "TeleportToSurvivorPosition", "VScrFSHack", 0, null, client);
 		DoEntFire("!self", "CallScriptFunction", "IFOverride0", 0, null, client);
 		DoEntFire("!self", "ClearParent", "", 0, null, client);
-		DoEntFire("!self", "RunScriptCode", "(playerAnim.AlterFS2)()", 0, client, worldSpawn);
+		DoEntFire("!self", "RunScriptCode", "(::playerAnim.AlterFS2)()", 0, client, worldSpawn);
 	}
 	function AlterFS1()
 	{
@@ -1574,8 +1574,8 @@ survManager <-
 				local bodyScope = body.GetScriptScope();
 				if ("VSSMId" in bodyScope) continue;
 				bodyScope.VSSMId <- survId;
-				if (!("VSSMChar" in bodyScope))
-					bodyScope.VSSMChar <- NetProps.GetPropInt(body, "m_nCharacterType");
+				//if (!("VSSMChar" in bodyScope))
+				//	bodyScope.VSSMChar <- NetProps.GetPropInt(body, "m_nCharacterType");
 				
 				// if m_survivorCharacter is < -1 then m_nCharacterType loops back to < 255
 				local bodyChar = NetProps.GetPropInt(body, "m_nCharacterType");
@@ -1700,8 +1700,8 @@ survManager <-
 			{
 				witchScope.VSSMTarget <- client;
 				
-				DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc1(self, activator)", 0, client, witch);
-				DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc2(self, activator)", 0.01, client, witch);
+				DoEntFire("!self", "RunScriptCode", "(survManager.WitchAttack1)()", 0, client, witch);
+				DoEntFire("!self", "RunScriptCode", "(survManager.WitchAttack2)()", 0.01, client, witch);
 			//	local effectEnt = NetProps.GetPropEntity(witch, "m_hEffectEntity");
 			//	if (effectEnt != null && effectEnt.GetClassname() == "entityflame")
 			//	{
@@ -1748,8 +1748,8 @@ survManager <-
 				//	bot = witch,
 				//	cmd = DirectorScript.BOT_CMD_RESET,
 				//});
-				DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc1(self, activator)", 0, lookTarg, witch);
-				DoEntFire("!self", "RunScriptCode", "survManager.WitchAttackFunc2(self, activator)", 0.01, lookTarg, witch);
+				DoEntFire("!self", "RunScriptCode", "(survManager.WitchAttack1)()", 0, lookTarg, witch);
+				DoEntFire("!self", "RunScriptCode", "(survManager.WitchAttack2)()", 0.01, lookTarg, witch);
 				
 				witchScope.VSSMTarget <- lookTarg;
 				//NetProps.SetPropFloat(witch, "m_rage", 1);
@@ -1771,7 +1771,7 @@ survManager <-
 			}
 		}
 	}
-	function WitchAttackFunc1(self, activator)
+	function WitchAttack1()
 	{
 		if (activator == null) return;
 		
@@ -1780,7 +1780,7 @@ survManager <-
 			cmd = DirectorScript.BOT_CMD_RESET,
 		});
 	}
-	function WitchAttackFunc2(self, activator)
+	function WitchAttack2()
 	{
 		if (activator == null) return;
 		
@@ -1975,7 +1975,6 @@ survManager <-
 			(clOrigin.y - forwardVec.y),
 			(clOrigin.z - forwardVec.z)
 		);
-		local tVec = NetProps.GetPropVector(client, "m_vecVelocity");
 		
 		local ratio_x = distance.x / sqrt(distance.y * distance.y + distance.x * distance.x);//Ratio x/hypo
 		local ratio_y = distance.y / sqrt(distance.y * distance.y + distance.x * distance.x);//Ratio y/hypo
@@ -2437,7 +2436,8 @@ survManager <-
 		else
 		{
 			bodyScope.activator <- client;
-			bodyScope.VSSMDefib <- DefibCheck.weakref();
+			if (!("VSSMDefib" in bodyScope) || bodyScope.VSSMDefib == null)
+				bodyScope.VSSMDefib <- DefibCheck.weakref();
 			bodyScope.VSSMDefib();
 		}
 	}
@@ -5007,10 +5007,9 @@ survManager <-
 			}
 			DoEntFire("!self", "CallScriptFunction", "VSSMFunc3", 0, null, worldSpawn);
 			//SendToServerConsole("sb_add bill");
-			// dont use SendToServerConsole it has a bias to player-triggered funcs
-			// and is probably only triggerable with sv_cheats
-			// friendship ended with SendToServerConsole
-			// now info_l4d1_survivor_spawn is my best friend
+			// cant use SendToServerConsole, it acted inconsistently earlier in testing
+			// back when survivor character switching was instant
+			// sometimes it spawned a bill, other times it didn't
 		}
 		//local worldScope = worldSpawn.GetScriptScope();
 		
