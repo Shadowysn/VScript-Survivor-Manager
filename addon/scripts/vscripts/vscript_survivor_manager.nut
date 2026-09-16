@@ -106,7 +106,7 @@ if (!("teamCrashFix" in getroottable()) ||
 	}
 }
 }
-__CollectEventCallbacks(::teamCrashFix, "OnGameEvent_", "GameEventCallbacks", RegisterScriptGameEventListener);
+__CollectGameEventCallbacks(::teamCrashFix);
 
 local playerAnimVersion = 1;
 if (!("playerAnim" in getroottable()) || 
@@ -414,11 +414,14 @@ survManager <-
 		}*/
 	}
 	
-	// Stop the pistol drop spam caused by Manacat's mods
+	// Stop the pistol drop spam caused by Manacat's mods and seemingly others
 	// https://steamcommunity.com/sharedfiles/filedetails/?id=213445426
-	function DropItemCheck(client, weaponClass)
+	function DropItemCheck(client, weapon, weaponClass)
 	{
-		if (weaponClass == "weapon_pistol" && 
+		// ideally this should be replaced entirely by classname replace
+		// but people still claim pistol drop spam???? why?? what's happening now?
+		// the classname replace DOES fix manacat's mod for me
+		/*if (weaponClass == "weapon_pistol" && 
 		!("repair1" in this) && 
 		"manacat_rng_item" in getroottable() && "OnGameEvent_weapon_drop" in ::manacat_rng_item)
 		{
@@ -432,8 +435,12 @@ survManager <-
 				if(NetProps.GetPropInt(player,"m_iHealth") != 0 && NetProps.GetPropFloat(player,"m_healthBuffer") != 0)::manacat_rng_item.inv_save(params.userid);
 			}
 			this.repair1 <- null;
-		}
-		client.DropItem(weaponClass);
+		}*/
+		// not trusting any more from other mods hooking onto weapon_drop
+		// give them the classname switch treatment
+		weapon.__KeyValueFromString("classname", "vssm_is_dropping_this");
+		client.DropItem("vssm_is_dropping_this");
+		weapon.__KeyValueFromString("classname", weaponClass);
 	}
 	
 	function ReloadItems()
@@ -471,9 +478,11 @@ survManager <-
 			local origWeps = null;
 			for ( local moveChild = client.FirstMoveChild(); moveChild != null; moveChild = moveChild.NextMovePeer() )
 			{
-				if (!moveChild.IsValid() || moveChild.GetClassname().slice(0,7) != "weapon_") continue;
-				if (origWeps == null) origWeps = [];
-				origWeps.append(moveChild);
+				if (!moveChild.IsValid()) continue;
+				local childClass = moveChild.GetClassname();
+				if (!(6 in childClass) || childClass.slice(0,7) != "weapon_") continue;
+				if (origWeps == null) origWeps = {};
+				origWeps[childClass] <- moveChild;
 			}
 			
 			local userId = client.GetPlayerUserId();
@@ -487,6 +496,29 @@ survManager <-
 	}
 	function OnGameEvent_round_start( params )
 	{
+		// fix other people's broken codeeeeee
+		if ("SurvSwap" in getroottable() && "SetSurvivorContext" in ::SurvSwap.Func)
+		{
+			printl("Patching helleh's code to avoid breaking VSSM");
+			::SurvSwap.Func.SetSurvivorContext <- function(Player, CurrentModel)
+			{
+				if (!Player.IsSurvivor()) return;
+				local DisplayName = GetCharacterDisplayName(Player).tolower();
+				if (DisplayName != null && DisplayName != "")
+				{
+					local Character = Survivors[DisplayName];
+					local ModelMatch = Character.Model == CurrentModel;
+					ModelMatch = ModelMatch ? 0 : 1;
+					local NetID = Player.GetNetworkIDString();
+					if (NetID == "BOT")
+					{
+						SetFakeClientConVarValue(Player, "name", Character.Name[ModelMatch]);
+					}
+					Player.SetContext("who", Character.Context[ModelMatch], -1);
+				}
+			}
+		}
+		
 		if (VSSMAllowRoundStart == null) return;
 		RoundStart();
 		//WarnIncompat();
@@ -1395,7 +1427,7 @@ survManager <-
 				val.Kill();
 				continue;
 			}
-			survManager.DropItemCheck(main, valClass);
+			survManager.DropItemCheck(main, val, valClass);
 			DoEntFire("!self", "Use", "", 0, target, val);
 		}
 		foreach (key, val in targetInvTable)
@@ -1415,7 +1447,7 @@ survManager <-
 				val.Kill();
 				continue;
 			}
-			survManager.DropItemCheck(target, valClass);
+			survManager.DropItemCheck(target, val, valClass);
 			DoEntFire("!self", "Use", "", 0, main, val);
 		}
 		
@@ -2915,9 +2947,11 @@ survManager <-
 			local origWeps = null;
 			for ( local moveChild = client.FirstMoveChild(); moveChild != null; moveChild = moveChild.NextMovePeer() )
 			{
-				if (!moveChild.IsValid() || moveChild.GetClassname().slice(0,7) != "weapon_") continue;
-				if (origWeps == null) origWeps = [];
-				origWeps.append(moveChild);
+				if (!moveChild.IsValid()) continue;
+				local childClass = moveChild.GetClassname();
+				if (!(6 in childClass) || childClass.slice(0,7) != "weapon_") continue;
+				if (origWeps == null) origWeps = {};
+				origWeps[childClass] <- moveChild;
 			}
 			
 			local survSlot = gameSurvSlots.find(client);
@@ -5231,7 +5265,7 @@ survManager <-
 				case "slot2":
 				case "slot3":
 				case "slot4":
-				case "slot5": // gnome or cola, TODO: can't delete old ones because it's autodropped and converted to prop_physics so we end up having dupes
+				case "slot5": // gnome or cola or gascan or propanetank or oxygentank, basically any carriable that's a weapon, TODO: can't delete old ones because it's autodropped and converted to prop_physics so we end up having dupes + clone survivors will also lose or gain duplicates of them depending on the original's inventory
 					if (!("extras" in converTable))
 					{converTable["extras"] <- {};}
 					
@@ -5411,7 +5445,14 @@ survManager <-
 						};
 						if (isMelee) newWepTbl.melee_script_name <- VSSMTransItemsTbl[survSlotStr][key].melee;
 						
-						local newWep = SpawnEntityFromTable(VSSMTransItemsTbl[survSlotStr][key].classname, newWepTbl);
+						local newWep = null;
+						if (VSSMTransItemsTbl[survSlotStr][key].classname in origWeps)
+						{
+							newWep = origWeps[VSSMTransItemsTbl[survSlotStr][key].classname];
+							delete origWeps[VSSMTransItemsTbl[survSlotStr][key].classname];
+						}
+						else
+							newWep = SpawnEntityFromTable(VSSMTransItemsTbl[survSlotStr][key].classname, newWepTbl);
 						if (newWep == null || !newWep.IsValid()) break;
 						
 						if (isMelee)
@@ -5439,23 +5480,36 @@ survManager <-
 								//local newWep2 = SpawnEntityFromTable(VSSMTransItemsTbl[survSlotStr][key].classname, newWepTbl);
 								//DoEntFire("!self", "Use", "", 0, client, newWep2);
 								NetProps.SetPropInt(newWep, "m_isDualWielding", VSSMTransItemsTbl[survSlotStr][key].dual);
+								NetProps.SetPropInt(newWep, "m_hasDualWeapons", VSSMTransItemsTbl[survSlotStr][key].dual);
 							}
 						}
 						
 						if ("skin" in VSSMTransItemsTbl[survSlotStr][key])
 						{NetProps.SetPropInt(newWep, "m_nSkin", VSSMTransItemsTbl[survSlotStr][key].skin);}
 						NetProps.SetPropInt(newWep, "m_MoveType", 0);
-						DoEntFire("!self", "Use", "", 0, client, newWep);
+						if (newWep.GetOwnerEntity() == null)
+							DoEntFire("!self", "Use", "", 0, client, newWep);
 						break;
 					
 					case "extras":
 						for (local i = 0; i < VSSMTransItemsTbl[survSlotStr][key].len(); i++)
 						{
-							local newWep = SpawnEntityFromTable(VSSMTransItemsTbl[survSlotStr][key][i.tostring()], {
-								origin = clOrigin,
-							});
+							local newWep = null;
+							if (VSSMTransItemsTbl[survSlotStr][key][i.tostring()] in origWeps)
+							{
+								local retrievedClass = VSSMTransItemsTbl[survSlotStr][key][i.tostring()];
+								newWep = origWeps[retrievedClass];
+								delete origWeps[retrievedClass];
+							}
+							else
+							{
+								newWep = SpawnEntityFromTable(VSSMTransItemsTbl[survSlotStr][key][i.tostring()], {
+									origin = clOrigin,
+								});
+							}
 							NetProps.SetPropInt(newWep, "m_MoveType", 0);
-							DoEntFire("!self", "Use", "", 0, client, newWep);
+							if (newWep.GetOwnerEntity() == null)
+								DoEntFire("!self", "Use", "", 0, client, newWep);
 						}
 						break;
 					}
@@ -5466,10 +5520,7 @@ survManager <-
 					foreach (key, val in origWeps)
 					{
 						if (NetProps.HasProp(val, "m_isDualWielding") && NetProps.GetPropInt(val, "m_isDualWielding") != 0)
-						{
 							NetProps.SetPropInt(val, "m_isDualWielding", 0);
-						}
-						survManager.DropItemCheck(client, val.GetClassname());
 						val.Kill();
 					}
 				}
@@ -5494,13 +5545,23 @@ survManager <-
 		}
 		
 		local clOrigin = client.EyePosition();
+		local pistols = 0;
 		
 		local function DoMelee(val)
 		{
-			local newWep = SpawnEntityFromTable("weapon_melee", {
-				origin = clOrigin,
-				melee_script_name = val,
-			});
+			local newWep = null;
+			if ("weapon_melee" in origWeps)
+			{
+				newWep = origWeps["weapon_melee"];
+				delete origWeps["weapon_melee"];
+			}
+			else
+			{
+				newWep = SpawnEntityFromTable("weapon_melee", {
+					origin = clOrigin,
+					melee_script_name = val,
+				});
+			}
 			if (newWep == null) return null;
 			if (NetProps.GetPropInt(newWep, "m_nModelIndex") == errorMeleeIdx)
 			{
@@ -5556,16 +5617,25 @@ survManager <-
 				// both null and 0 considered gun
 				// difference with null is if we reach here, there isn't a table key
 				local classWep = null;
-				if (6 in val && val[0] == 'w' && val[1] == 'e' && val[2] == 'a' && 
-				val[3] == 'p' && val[4] == 'o' && val[5] == 'n' && 
-				val[6] == '_')
+				if (6 in val && val.slice(0,7) == "weapon_")
 					classWep = val;
 				else
 					classWep = "weapon_"+val;
 				
-				newWep = SpawnEntityFromTable(classWep, {
-					origin = clOrigin,
-				});
+				if (classWep == "weapon_pistol" && pistols >= 2) break;
+				
+				if (classWep in origWeps && classWep != "weapon_pistol")
+				{
+					newWep = origWeps[classWep];
+					delete origWeps[classWep];
+				}
+				else
+				{
+					newWep = SpawnEntityFromTable(classWep, {
+						origin = clOrigin,
+					});
+					if (classWep == "weapon_pistol") pistols++;
+				}
 				if (newWep == null)
 				{
 					// if classname is invalid, maybe it's a melee
@@ -5579,7 +5649,8 @@ survManager <-
 			
 			if (newWep != null)
 			{
-				DoEntFire("!self", "Use", "", 0, client, newWep);
+				if (newWep.GetOwnerEntity() == null)
+					DoEntFire("!self", "Use", "", 0, client, newWep);
 				if (!hasKey) startWepsType[key] <- newType;
 			}
 			else
@@ -5602,8 +5673,6 @@ survManager <-
 		local dirOptionDefaultItemsLen = survManager.dirOptionDefaultItems.len();
 		
 		local keepBase = survManager.Settings.survStartWeapons.find("base") != null;
-		local pistols = 0;
-		
 		if (keepBase && !(0 in survManager.dirOptionDefaultItems))
 		{
 			local dirOptions = DirectorScript.GetDirectorOptions();
@@ -5613,6 +5682,8 @@ survManager <-
 				for (local i = 0; (option = dirOptions.GetDefaultItem(i)) != 0; i++)
 				{
 					survManager.dirOptionDefaultItems.append(option);
+					if (option == "weapon_pistol")
+						pistols++;
 				}
 				dirOptionDefaultItemsLen = survManager.dirOptionDefaultItems.len();
 			}
@@ -5622,20 +5693,38 @@ survManager <-
 		{
 			if (origWeps != null)
 			{
-				// TODO: potential entity slots can be filled by old weapons and 
-				// new weapons at same time momentarily
-				// maybe delay the weapon spawning?
+				// potential entity slots can be filled by old weapons and 
+				// block new weapons from pickup at same time momentarily
 				foreach (key, val in origWeps)
 				{
 					if (NetProps.HasProp(val, "m_isDualWielding") && NetProps.GetPropInt(val, "m_isDualWielding") != 0)
-					{
 						NetProps.SetPropInt(val, "m_isDualWielding", 0);
-					}
-					survManager.DropItemCheck(client, val.GetClassname());
+					
+					// make drop exception for pistol
+					local valClass = val.GetClassname();
+					if (valClass == "weapon_pistol")
+						survManager.DropItemCheck(client, val, valClass);
 					val.Kill();
 				}
 				// DropItem needs to be called because Kill doesn't remove
 				// from inventory immediately, so it can block Use pickups
+				// 9/14/2026 Other mods LOVE deleting and recreating pistols and making this all spam pistol drops
+				// Can't rely on DropItem by itself
+			}
+		}
+		else // we gotta count pistols man
+		{
+			if (origWeps != null)
+			{
+				foreach (key, val in origWeps)
+				{
+					if (val.GetClassname() == "weapon_pistol")
+					{
+						pistols++;
+						if (NetProps.GetPropInt(val, "m_isDualWielding") != 0)
+							pistols++;
+					}
+				}
 			}
 		}
 		
@@ -5920,7 +6009,7 @@ SpawnEntityGroupFromTable({
 });
 }
 
-__CollectEventCallbacks(survManager, "OnGameEvent_", "GameEventCallbacks", RegisterScriptGameEventListener);
+__CollectGameEventCallbacks(survManager);
 
 if (!("g_MapName" in this)) g_MapName <- Director.GetMapName().tolower();
 // do this in here as map_support runs too late
