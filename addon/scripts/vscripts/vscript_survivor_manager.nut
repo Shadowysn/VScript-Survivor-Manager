@@ -4044,12 +4044,14 @@ survManager <-
 					//printl("chatResult tointeger: "+chatResult)
 				}
 				catch (err) {
-					ClientPrint(client, 3, "\x03"+"[VSSM] "+"\x01"+"Please specify a number to set survCount to.\nCurrent survCount setting is "+Settings.survCount+".");
+					UpdateConfigFile(null);
+					ClientPrint(client, 3, "\x03"+"[VSSM] "+"\x01"+"Settings are refreshed.\nCurrent survCount setting is "+Settings.survCount+".");
 					return;
 				}
 				if (chatResult < 0)
 				{
-					ClientPrint(client, 3, "\x03"+"[VSSM] "+"\x01"+"You can't set survCount lower than 0!");
+					UpdateConfigFile(null);
+					ClientPrint(client, 3, "\x03"+"[VSSM] "+"\x01"+"Settings are refreshed.\nYou can't set survCount lower than 0!");
 					return;
 				}
 				
@@ -4069,20 +4071,22 @@ survManager <-
 				
 				if (Settings.survCount == chatResult)
 				{
-					ClientPrint(client, 3, "\x03"+"[VSSM] "+"\x01"+"survCount is already at "+chatResult+"!");
+					UpdateConfigFile(null);
+					ClientPrint(client, 3, "\x03"+"[VSSM] "+"\x01"+"Settings are refreshed.\nsurvCount is already at "+chatResult+"!");
 					return;
 				}
 				else
 				{
 					UpdateConfigFile({survCount = chatResult});
-					ClientPrint(client, 3, "\x03"+"[VSSM] "+"\x01"+"survCount updated to "+chatResult+" and settings have been refreshed.");
+					ClientPrint(client, 3, "\x03"+"[VSSM] "+"\x01"+"Settings are refreshed.\nsurvCount updated to "+chatResult+".");
 				}
 				
 				SpawnBot(0);
 			}
 			else
 			{
-				ClientPrint(client, 3, "\x03"+"[VSSM] "+"\x01"+"Please specify a number to set survCount to.\nCurrent survCount setting is "+Settings.survCount+".");
+				UpdateConfigFile(null);
+				ClientPrint(client, 3, "\x03"+"[VSSM] "+"\x01"+"Settings are refreshed.\nCurrent survCount setting is "+Settings.survCount+".");
 			}
 			
 			return;
