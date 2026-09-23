@@ -418,10 +418,10 @@ survManager <-
 	// https://steamcommunity.com/sharedfiles/filedetails/?id=213445426
 	function DropItemCheck(client, weapon, weaponClass)
 	{
-		// ideally this should be replaced entirely by classname replace
-		// but people still claim pistol drop spam???? why?? what's happening now?
-		// the classname replace DOES fix manacat's mod for me
-		/*if (weaponClass == "weapon_pistol" && 
+		// custom survivor takeover hasn't been patched to fix pistol drop
+		// and manacat's mod is proceeding to be too invasive and causing
+		// pistol drop spam for CST so i have to keep this active
+		if (weaponClass == "weapon_pistol" && 
 		!("repair1" in this) && 
 		"manacat_rng_item" in getroottable() && "OnGameEvent_weapon_drop" in ::manacat_rng_item)
 		{
@@ -435,7 +435,7 @@ survManager <-
 				if(NetProps.GetPropInt(player,"m_iHealth") != 0 && NetProps.GetPropFloat(player,"m_healthBuffer") != 0)::manacat_rng_item.inv_save(params.userid);
 			}
 			this.repair1 <- null;
-		}*/
+		}
 		// not trusting any more from other mods hooking onto weapon_drop
 		// give them the classname switch treatment
 		weapon.__KeyValueFromString("classname", "vssm_is_dropping_this");
